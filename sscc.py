@@ -56,6 +56,7 @@ ncore = 0
 ncas = m.nao
 nelcas = sum(m.nelec)
 nelec = m.nelec
+print(f'{nelec=} in {ncas=}')
 
 m.max_memory = 3000 # 3 GB
 mf = pyscf.scf.RHF(m).run()
@@ -146,7 +147,6 @@ def resp(ham, nelec, gs_wfn, gs_evecs, integral, omega, gamma, couple_property=T
         while True:
             dets_added = pyci.add_hci(ham, wfn, x, eps=eps_resp)
             op.update(ham, wfn)
-            #mu_op.update(ham_mu, wfn)
             e_vecs = np.concatenate((e_vecs, np.zeros((dets_added, e_vecs.shape[1]))), axis=0)
             matvec = lambda v: wrap_matvec(op, v)
             hdiag = op.diagonal()
@@ -155,7 +155,6 @@ def resp(ham, nelec, gs_wfn, gs_evecs, integral, omega, gamma, couple_property=T
             delta_e = old_energy - np.min(e_vals)
             old_energy = np.min(e_vals)
             num_determinants = e_vecs.shape[0]
-            #zPsi = mu_op.matvec(e_vecs)
             zPsi = property_operator(wfn.to_det_array(), mu, e_vecs[:,0])
             zPsi -= e_vecs[:,0] * np.dot(e_vecs[:,0], zPsi)
             E0 = np.dot(e_vecs[:,0], matvec(e_vecs[:,0]))
