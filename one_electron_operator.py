@@ -1,13 +1,15 @@
 import numba
 import numpy as np
 
-
 @numba.jit(nopython=True)
 def arr_to_tuple(x):
+    # only implemented for two words (up to 128 orbitals)
+    if len(x) > 2:
+        raise NotImplementedError
     if len(x) == 1:
-        return (x[0], 0)
-    elif len(x) == 2:
-        return (x[0], x[1])
+        return (np.uint64(x[0]), np.uint64(0))
+    else:
+        return (np.uint64(x[0]), np.uint64(x[1]))
 
 
 @numba.jit(nopython=True)
@@ -18,7 +20,6 @@ def bitcount(x, max_idx):
             i &= numba.uint64(i - 1)
             b += 1
     return b
-
 
 @numba.jit(nopython=True)
 def operator1e_state_multiplication(
