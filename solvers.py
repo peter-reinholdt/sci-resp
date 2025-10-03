@@ -2,7 +2,7 @@
 
 import numpy as np
 
-def davidson_response(A, b, hdiag, tol=1e-3, verbose=False, guess=None):
+def davidson_response(A, b, hdiag, tol=1e-3, maxiter=100, verbose=False, guess=None):
     if np.allclose(b, 0.0, atol=1e-20):
         return b
 
@@ -23,7 +23,7 @@ def davidson_response(A, b, hdiag, tol=1e-3, verbose=False, guess=None):
     AV[:, 0] = matvec(V[:, 0])
 
     bred = V.T @ b
-    for i in range(100):
+    for i in range(maxiter):
         Ered = V.T @ AV
         xred = np.linalg.solve(Ered, bred)
         x = xred @ V.T
@@ -93,4 +93,4 @@ def solve_ci(hvp, hdiag, roots, tol=1e-6, maxiter=100, verbose=False, c0=None):
                 new_vs.append(vp)
         new_vs = np.array(new_vs).T
         AV = np.hstack([AV, hvp(new_vs)])
-    raise ValueError('Convergence not reached')
+    raise ValueError('Not converged')
