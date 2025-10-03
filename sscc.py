@@ -14,7 +14,8 @@ from pyscf.data import nist
 import scipy
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--model', type=int, required=True)
+parser.add_argument('--couple-property', type=bool, default=True)
+parser.add_argument('--couple-response', type=bool, default=True)
 parser.add_argument('--eps', type=float, default=1e-3)
 args = parser.parse_args()
 
@@ -46,7 +47,7 @@ def wrap_matvec(op, x):
         return out
 
 xyz = 'water.xyz'
-basis = '6-311++Gss-J'
+basis = '6-31G-J'
 nuc_pair = [(1,2), (1,0)]
 
 m = pyscf.M(atom=xyz, basis=basis, symmetry=True)
@@ -99,20 +100,7 @@ while dets_added:
     print(f'{niter=} {eps=} {e_vals[0]=} {delta_e=} {dets_added=} {num_determinants=}')
 
 
-# model levels
-# model & 0b001 -> Add coupling to property integral
-# model & 0b010 -> Add coupling Hamiltonian--zPsi
-# model & 0b100 -> Add coupling Hamiltonian--response (iterative)
-#
-# For example, model=0 --> no extra determinants added
-#              model=5 --> couple to property + iterative coupling to response vector
-
-def resp(ham, nelec, gs_wfn, gs_evecs, integral, omega, gamma, model=5, triplet=False):
-    t1 = time.time()
-    couple_property = model & 0b001
-    couple_zPsi = model & 0b010
-    couple_response = model & 0b100
-
+def resp(ham, nelec, gs_wfn, gs_evecs, integral, omega, gamma, couple_property=True, couple_response=True, triplet=False):
     property_operator = triplet_operator_state if triplet else singlet_operator_state
     
     # setup common stuff
@@ -148,9 +136,6 @@ def resp(ham, nelec, gs_wfn, gs_evecs, integral, omega, gamma, model=5, triplet=
     zPsi = property_operator(wfn.to_det_array(), mu, e_vecs[:,0])
     zPsi -= e_vecs[:,0] * np.dot(e_vecs[:,0], zPsi)
 
-    if couple_zPsi:
-        raise ValueError
-    
     E0 = np.dot(e_vecs[:,0], matvec(e_vecs[:,0]))
     # 4) Solve response equation
     E0w = E0 + omega + 1j * gamma
@@ -280,7 +265,7 @@ for ia in range(m.natm):
             response_vectors.append(None)
             h1aos.append(operator)
             continue
-        wfn_rsp, response_e_vec, response_vector, property_vector = resp(ham, nelec, wfn, e_vecs, operator, omega=0.0, gamma=0.0, model=args.model, triplet=False)
+        wfn_rsp, response_e_vec, response_vector, property_vector = resp(ham, nelec, wfn, e_vecs, operator, omega=0.0, gamma=0.0, couple_property=args.couple_property, couple_response=args.couple_response, triplet=False)
         response_wfns.append(wfn_rsp)
         response_e_vecs.append(response_e_vec)
         response_vectors.append(response_vector)
@@ -320,7 +305,7 @@ for ia in range(m.natm):
             response_vectors.append(None)
             h1aos.append(operator)
             continue
-        wfn_rsp, response_e_vec, response_vector, property_vector = resp(ham, nelec, wfn, e_vecs, operator, omega=0.0, gamma=0.0, model=args.model, triplet=True)
+        wfn_rsp, response_e_vec, response_vector, property_vector = resp(ham, nelec, wfn, e_vecs, operator, omega=0.0, gamma=0.0, couple_property=args.couple_property, couple_response=args.couple_response, triplet=True)
         response_wfns.append(wfn_rsp)
         response_e_vecs.append(response_e_vec)
         response_vectors.append(response_vector)
@@ -356,7 +341,7 @@ for ia in range(m.natm):
         response_vectors.append(None)
         h1aos.append(operator)
         continue
-    wfn_rsp, response_e_vec, response_vector, property_vector = resp(ham, nelec, wfn, e_vecs, operator, omega=0.0, gamma=0.0, model=args.model, triplet=True)
+    wfn_rsp, response_e_vec, response_vector, property_vector = resp(ham, nelec, wfn, e_vecs, operator, omega=0.0, gamma=0.0, couple_property=args.couple_property, couple_response=args.couple_response, triplet=True)
     response_wfns.append(wfn_rsp)
     response_e_vecs.append(response_e_vec)
     response_vectors.append(response_vector)
