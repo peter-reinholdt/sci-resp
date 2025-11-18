@@ -14,6 +14,8 @@ parser.add_argument('--ncore', type=int, default=0)
 parser.add_argument('--couple-property', type=bool, default=True)
 parser.add_argument('--couple-response', type=bool, default=True)
 parser.add_argument('--eps', type=float, default=1e-3)
+parser.add_argument('--freq', type=float, required=True)
+parser.add_argument('--gamma', type=float, default=0.01469972198)
 args = parser.parse_args()
 
 xyz = args.xyz
@@ -69,15 +71,22 @@ while dets_added:
     print(f'{niter=} {eps=} {e_vals[0]=} {delta_e=} {dets_added=} {num_determinants=}')
 
 
-gamma = 0.0
-omega = 0.0
 integrals = m.intor('int1e_r')
 labels = ['XX', 'YY', 'ZZ']
-alphas = []
+
+gamma = args.gamma
+omega = args.freq
+
+res = []
+ims = []
 for operator, label in zip(integrals, labels):
-    wfn_rsp, e_vecs_rsp, x_rsp, zpsi_rsp = resp(cas, ham, nelec, wfn, e_vecs, operator, omega, gamma, eps_mu, eps_resp, couple_property=args.couple_property, couple_response=args.couple_response)
-    alpha = 2*np.dot(x_rsp.real, zpsi_rsp)
-    alphas.append(alpha)
-    print(f'{label=} {omega=} {alpha=} {len(x_rsp)=}', flush=True)
-alpha_average = np.average(alphas)
-print(f'Average {omega=} {alpha_average=}')
+    wfn_plus, e_vecs_plus, x_plus, zpsi_plus = resp(cas, ham, nelec, wfn, e_vecs, operator, omega, gamma, eps_mu, eps_resp, couple_property=args.couple_property, couple_response=args.couple_response)
+    wfn_minus, e_vecs_minus, x_minus, zpsi_minus = resp(cas, ham, nelec, wfn, e_vecs, -operator, -omega, -gamma, eps_mu, eps_resp, couple_property=args.couple_property, couple_response=args.couple_response)
+    re = np.dot(x_plus.real, zpsi_plus) + np.dot(x_minus.real, zpsi_minus)
+    im = np.dot(x_plus.imag, zpsi_plus) + np.dot(x_minus.imag, zpsi_minus)
+    res.append(re)
+    ims.append(im)
+    print(f'{label=} {omega=} {re=} {im=} {len(x_plus)=} {len(x_minus)=}', flush=True)
+re_average = np.average(res)
+im_average = np.average(ims)
+print(f'Average {omega=} {re_average=} {im_average=}')
