@@ -11,8 +11,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--xyz', type=str, required=True)
 parser.add_argument('--basis', type=str, required=True)
 parser.add_argument('--ncore', type=int, default=0)
-parser.add_argument('--couple-property', type=bool, default=True)
-parser.add_argument('--couple-response', type=bool, default=True)
+parser.add_argument('--couple-property', action=argparse.BooleanOptionalAction, default=True)
+parser.add_argument('--couple-response', action=argparse.BooleanOptionalAction, default=True)
 parser.add_argument('--eps', type=float, default=1e-3)
 args = parser.parse_args()
 
@@ -21,9 +21,11 @@ basis = args.basis
 
 m = pyscf.M(atom=xyz, basis=basis, symmetry=True)
 ncore = args.ncore
-ncas = m.nao
-nelcas = sum(m.nelec)
-nelec = m.nelec
+ncas = m.nao - args.ncore
+nelcas = sum(m.nelec) - 2*ncore
+nbeta = nelcas // 2
+nalpha = nelcas - nbeta
+nelec = (nalpha, nbeta)
 print(f'{nelec=} in {ncas=}')
 
 m.max_memory = 3000 # 3 GB
@@ -47,13 +49,13 @@ niter = 0
 
 # 1) Solve for |Psi_0>
 eps = args.eps
-eps_mu = eps
-eps_resp = eps
+eps_mu = eps if args.couple_property else None
+eps_resp = eps if args.couple_response else None
 
 dets_added = True
 while dets_added:
     # Add connected determinants to wave function via HCI
-    dets_added = pyci.add_hci(ham, wfn, e_vecs[0], eps=eps)
+    dets_added = pyci.add_hci(ham, wfn, e_vecs[:, 0], eps=eps)
     # Update CI matrix operator
     op.update(ham, wfn)
     # Solve CI matrix problem
@@ -82,7 +84,7 @@ perturbations = [(label, frequency, parity) for label in labels
 wfn, op, e_vecs, response_vectors, property_vectors = resp(ham, wfn, op, e_vecs, integrals, perturbations, eps_mu=eps, eps_resp=eps)
 alphas = []
 for i, label in enumerate(labels):
-    alpha = 2*np.dot(response_vectors[(label, omega, 1.0)], property_vectors[label])
+    alpha = 2*np.dot(response_vectors[(label, omega, 1.0)].real, property_vectors[label])
     alphas.append(alpha)
     print(f'{label=} {omega=} {alpha=}', flush=True)
 alpha_average = np.average(alphas)

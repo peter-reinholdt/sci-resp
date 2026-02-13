@@ -5,14 +5,14 @@ import pyscf
 import numpy as np
 import pyci
 from solvers import solve_ci
-from response import resp, wrap_matvec
+from response import resp, wrap_matvec, one_electron_ao2mo
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--xyz', type=str, required=True)
 parser.add_argument('--basis', type=str, required=True)
 parser.add_argument('--ncore', type=int, default=0)
-parser.add_argument('--couple-property', type=bool, default=True)
-parser.add_argument('--couple-response', type=bool, default=True)
+parser.add_argument('--couple-property', action=argparse.BooleanOptionalAction, default=True)
+parser.add_argument('--couple-response', action=argparse.BooleanOptionalAction, default=True)
 parser.add_argument('--eps', type=float, default=1e-3)
 parser.add_argument('--freq', type=float, required=True)
 parser.add_argument('--gamma', type=float, default=0.01469972198)
@@ -23,9 +23,11 @@ basis = args.basis
 
 m = pyscf.M(atom=xyz, basis=basis, symmetry=True)
 ncore = args.ncore
-ncas = m.nao
-nelcas = sum(m.nelec)
-nelec = m.nelec
+ncas = m.nao - args.ncore
+nelcas = sum(m.nelec) - 2*ncore
+nbeta = nelcas // 2
+nalpha = nelcas - nbeta
+nelec = (nalpha, nbeta)
 print(f'{nelec=} in {ncas=}')
 
 m.max_memory = 3000 # 3 GB
@@ -49,13 +51,13 @@ niter = 0
 
 # 1) Solve for |Psi_0>
 eps = args.eps
-eps_mu = eps
-eps_resp = eps
+eps_mu = eps if args.couple_property else None
+eps_resp = eps if args.couple_response else None
 
 dets_added = True
 while dets_added:
     # Add connected determinants to wave function via HCI
-    dets_added = pyci.add_hci(ham, wfn, e_vecs[0], eps=eps)
+    dets_added = pyci.add_hci(ham, wfn, e_vecs[:, 0], eps=eps)
     # Update CI matrix operator
     op.update(ham, wfn)
     # Solve CI matrix problem
@@ -71,22 +73,22 @@ while dets_added:
     print(f'{niter=} {eps=} {e_vals[0]=} {delta_e=} {dets_added=} {num_determinants=}')
 
 
-integrals = m.intor('int1e_r')
-labels = ['XX', 'YY', 'ZZ']
-
 gamma = args.gamma
 omega = args.freq
+dipole_integrals_ao = m.intor('int1e_r')
+dipole_integrals_mo = [one_electron_ao2mo(cas, integral) for integral in dipole_integrals_ao]
+labels = ['X', 'Y', 'Z']
+integrals  = {label: integral for (label, integral) in zip(labels, dipole_integrals_mo)}
+perturbations = [(label, frequency, parity) for label in labels 
+                                            for frequency in [omega] 
+                                            for parity in [1, -1]]
 
-res = []
-ims = []
-for operator, label in zip(integrals, labels):
-    wfn_plus, e_vecs_plus, x_plus, zpsi_plus = resp(cas, ham, nelec, wfn, e_vecs, operator, omega, gamma, eps_mu, eps_resp, couple_property=args.couple_property, couple_response=args.couple_response)
-    wfn_minus, e_vecs_minus, x_minus, zpsi_minus = resp(cas, ham, nelec, wfn, e_vecs, -operator, -omega, -gamma, eps_mu, eps_resp, couple_property=args.couple_property, couple_response=args.couple_response)
-    re = np.dot(x_plus.real, zpsi_plus) + np.dot(x_minus.real, zpsi_minus)
-    im = np.dot(x_plus.imag, zpsi_plus) + np.dot(x_minus.imag, zpsi_minus)
-    res.append(re)
-    ims.append(im)
-    print(f'{label=} {omega=} {re=} {im=} {len(x_plus)=} {len(x_minus)=}', flush=True)
-re_average = np.average(res)
-im_average = np.average(ims)
-print(f'Average {omega=} {re_average=} {im_average=}')
+wfn, op, e_vecs, response_vectors, property_vectors = resp(ham, wfn, op, e_vecs, integrals, perturbations, gamma=gamma, eps_mu=eps, eps_resp=eps)
+alphas = []
+for i, label in enumerate(labels):
+    alpha = np.dot(response_vectors[(label, omega, 1)], property_vectors[label])
+    alpha += np.dot(response_vectors[(label, omega, -1)], -property_vectors[label])
+    alphas.append(alpha)
+    print(f'{label=} {omega=} {alpha.real=: 16.9f} {alpha.imag=: 16.9f}', flush=True)
+alpha = np.average(alphas)
+print(f'Average:  {omega=} {alpha.real=: 16.9f} {alpha.imag=: 16.9f}')

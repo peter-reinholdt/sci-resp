@@ -14,7 +14,7 @@ parser.add_argument('--ncore', type=int, default=0)
 parser.add_argument('--couple-property', action=argparse.BooleanOptionalAction, default=True)
 parser.add_argument('--couple-response', action=argparse.BooleanOptionalAction, default=True)
 parser.add_argument('--eps', type=float, default=1e-3)
-parser.add_argument('--eps2-factor', type=float, default=100)
+parser.add_argument('--eps2', type=float, default=1e-9)
 args = parser.parse_args()
 
 xyz = args.xyz
@@ -50,24 +50,20 @@ niter = 0
 
 # 1) Solve for |Psi_0>
 eps = args.eps
+eps2 = args.eps2
 eps_mu = eps if args.couple_property else None
 eps_resp = eps if args.couple_response else None
 
-print(eps_mu)
-print(eps_resp)
-
 dets_added = True
-print(f'{e_vecs.shape=} {op.shape=}') 
 while dets_added:
     # Add connected determinants to wave function via HCI
-    dets_added = pyci.add_hci(ham, wfn, e_vecs[:,0], eps=eps)
+    dets_added = pyci.add_hci(ham, wfn, e_vecs[:, 0], eps=eps)
     # Update CI matrix operator
     op.update(ham, wfn)
     # Solve CI matrix problem
+    e_vecs = np.concatenate([e_vecs, np.zeros((dets_added, e_vecs.shape[1]))], axis=0)
     matvec = lambda v: wrap_matvec(op, v)
     hdiag = op.diagonal()
-    print(f'{e_vecs.shape=} {op.shape=}') 
-    e_vecs = np.concatenate([e_vecs, np.zeros((dets_added, e_vecs.shape[1]))], axis=0)
     e_vals, e_vecs = solve_ci(matvec, hdiag, roots=1, c0=e_vecs, verbose=True)
     e_vals += op.ecore
     delta_e = old_energy - np.min(e_vals)
@@ -79,15 +75,12 @@ while dets_added:
 
 gamma = 0.0
 omega = 0.0
-#dipole_integrals_ao = [m.intor('int1e_r')[2]]
 dipole_integrals_ao = m.intor('int1e_r')
 dipole_integrals_mo = [one_electron_ao2mo(cas, integral) for integral in dipole_integrals_ao]
 labels = ['X', 'Y', 'Z']
-#labels = ['Z']
 integrals  = {label: integral for (label, integral) in zip(labels, dipole_integrals_mo)}
 perturbations = [(label, frequency, parity) for label in labels 
                                             for frequency in [omega] 
                                             for parity in [1]]
 
-eps2 = eps / args.eps2_factor
 resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, eps_mu=eps_mu, eps_resp=eps_resp)
