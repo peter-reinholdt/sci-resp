@@ -108,7 +108,9 @@ def resp(ham, wfn, op, e_vecs, integrals, perturbations, frequency=0.0, gamma=0.
             for (label, omega, parity), response_vector in response_vectors.items():
                 num_determinants = len(wfn.to_det_array())
                 response_vector = zeropad(response_vector, num_determinants)
-                dets_added += pyci.add_hci(ham, wfn, response_vector, eps=eps_resp)
+                dets_added += pyci.add_hci(ham, wfn, response_vector.real, eps=eps_resp)
+                if np.any(response_vector.imag) != 0.:
+                    dets_added += pyci.add_hci(ham, wfn, response_vector.imag, eps=eps_resp)
             num_determinants = len(wfn.to_det_array())
             e_vecs = zeropad(e_vecs, num_determinants)
             op.update(ham, wfn)
@@ -147,17 +149,26 @@ def print_pt2_summary(response_functions):
     labels = [key for key in response_functions.keys() if key[-1] == 2]
     for label in labels:
         label1, label2, omega, _ = label
-        corr_0 = response_functions[(label1, label2, omega, 0)]
-        corr_1 = response_functions[(label1, label2, omega, 1)]
-        corr_2 = response_functions[(label1, label2, omega, 2)]
-        corr_0_int = response_functions[(label1, label2, omega, 0, 'internal')]
-        corr_1_int = response_functions[(label1, label2, omega, 1, 'internal')]
-        corr_2_int = response_functions[(label1, label2, omega, 2, 'internal')]
-        corr_0_ext = response_functions[(label1, label2, omega, 0, 'external')]
-        corr_1_ext = response_functions[(label1, label2, omega, 1, 'external')]
-        corr_2_ext = response_functions[(label1, label2, omega, 2, 'external')]
-        value = corr_0 + corr_1 + corr_2
-        print(f'<<{label1}; {label2}>>({omega=:})= {value: 14.9f}, {corr_0=: 14.9f}, {corr_1=: 14.9f}, {corr_2=: 14.9f} {corr_0_int=: 9e} {corr_0_ext=: 9e} {corr_1_int=: 9e} {corr_1_ext=: 9e} {corr_2_int=: 9e} {corr_2_ext=: 9e}')
+        Δ_0 = response_functions[(label1, label2, omega, 0)]
+        Δ_1 = response_functions[(label1, label2, omega, 1)]
+        Δ_2 = response_functions[(label1, label2, omega, 2)]
+        Δ_0_int = response_functions[(label1, label2, omega, 0, 'internal')]
+        value = Δ_0 + Δ_1 + Δ_2
+        ω = omega
+        if value.imag != 0:
+            # complex
+            imag = value.imag, Δ_0.imag, Δ_1.imag, Δ_2.imag, Δ_0_int.imag
+            value = value.real
+            Δ_0 = Δ_0.real
+            Δ_1 = Δ_1.real 
+            Δ_2 = Δ_2.real
+            Δ_0_int = Δ_0_int.real
+            print(f'Re<<{label1}; {label2}>>({ω=:}) {value=:16.9f} {Δ_0=:16.9f} {Δ_1=:16.9f} {Δ_2=:16.9f} {Δ_0_int=:16.9f}')
+            value, Δ_0, Δ_1, Δ_2, Δ_0_int = imag
+            print(f'Im<<{label1}; {label2}>>({ω=:}) {value=:16.9f} {Δ_0=:16.9f} {Δ_1=:16.9f} {Δ_2=:16.9f} {Δ_0_int=:16.9f}')
+        else:
+            # real
+            print(f'<<{label1}; {label2}>>({ω=:}) {value=:16.9f} {Δ_0=:16.9f} {Δ_1=:16.9f} {Δ_2=:16.9f} {Δ_0_int=:16.9f}')
 
 
 def resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, frequency=0.0, gamma=0.0, triplet=False, eps_mu=None, eps_resp=None):
@@ -189,6 +200,12 @@ def resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, frequency=0.0
     for (label, ham_perturbation) in ham_perturbations.items():
         added = pyci.add_hci(ham_perturbation, wfn, c0, eps=eps2)
         print('Added', added, 'from operator', label)
+        dets_added += added
+    for (label, omega, parity), response_vector in response_vectors.items():
+        added = pyci.add_hci(ham, wfn, response_vector.real, eps=eps2)
+        if np.any(response_vector.imag != 0):
+            added += pyci.add_hci(ham, wfn, response_vector.imag, eps=eps2)
+        print('Added', added, 'from response vector', (label, omega, parity))
         dets_added += added
     t2 = time.time()
     print('LR-SCI-PT det-add... done in:  ', t2 - t1, 's')
@@ -282,13 +299,15 @@ def resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, frequency=0.0
     response_vectors = {}
     print('LR-SCI-PT compute response vectors...')
     t1 = time.time()
+    dtype = np.complex128 if gamma != 0. else np.float64
     for (label, omega, parity) in perturbations:
         E0w = E0 + parity * (omega + 1j * gamma)
+        print(f'{E0w=}')
         
         # zeroth order
         _t1 = time.time()
         rhs = parity*property_vectors[(label, 0)]
-        response_vector = np.zeros_like(rhs)
+        response_vector = np.zeros_like(rhs, dtype=dtype)
         response_vector[:N_internal] = davidson_response(lambda v: matvec(v) - E0w*v, rhs[:N_internal], diagonal[:N_internal]-E0w)
         _t2 = time.time()
         print(f'X0-internal {label=}', _t2 - _t1, 's')
@@ -301,9 +320,12 @@ def resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, frequency=0.0
 
         # first order
         _t1 = time.time()
-        rhs = parity*property_vectors[(label, 1)] - op.Vmatvec_direct(ham, wfn, N_internal, eps2, response_vectors[(label, omega, parity, 0)])
+        rhs = parity*property_vectors[(label, 1)].astype(dtype)
+        rhs  -= op.Vmatvec_direct(ham, wfn, N_internal, eps2, response_vectors[(label, omega, parity, 0)].real)
+        if dtype == np.complex128:
+            rhs  -= op.Vmatvec_direct(ham, wfn, N_internal, eps2, response_vectors[(label, omega, parity, 0)].imag)
         rhs[:N_internal] = rhs[:N_internal] - c0 * np.dot(c0, rhs[:N_internal])
-        response_vector = np.zeros_like(rhs)
+        response_vector = np.zeros_like(rhs, dtype=dtype)
         _t2 = time.time()
         print(f'X1-rhs      {label=}', _t2 - _t1, 's')
         _t1 = time.time()
@@ -319,9 +341,14 @@ def resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, frequency=0.0
 
         # second order
         _t1 = time.time()
-        rhs = parity*property_vectors[(label, 2)] - op.Vmatvec_direct(ham, wfn, N_internal, eps2, response_vectors[(label, omega, parity, 1)]) + E2 * response_vectors[(label, omega, parity, 0)]
+        rhs = parity*property_vectors[(label, 2)].astype(dtype)
+        rhs -= op.Vmatvec_direct(ham, wfn, N_internal, eps2, response_vectors[(label, omega, parity, 1)].real) 
+        if dtype == np.complex128:
+            rhs -= op.Vmatvec_direct(ham, wfn, N_internal, eps2, response_vectors[(label, omega, parity, 1)].imag) 
+        rhs += E2 * response_vectors[(label, omega, parity, 0)]
+
         rhs[:N_internal] = rhs[:N_internal] - c0 * np.dot(c0, rhs[:N_internal])
-        response_vector = np.zeros_like(rhs)
+        response_vector = np.zeros_like(rhs, dtype=dtype)
         _t2 = time.time()
         print(f'X2-rhs      {label=}', _t2 - _t1, 's')
         _t1 = time.time()
@@ -343,28 +370,28 @@ def resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, frequency=0.0
     print('LR-SCI-PT assemble response functions...')
     t1 = time.time()
     for (label, omega, parity) in perturbations:
-        for (label2, _, _) in perturbations:
+        for label2 in integrals.keys():
             # zeroth
-            response_functions[(label, label2, omega, 0)] += np.dot(response_vectors[(label, omega, parity, 0)], property_vectors[(label2, 0)])
-            response_functions[(label, label2, omega, 0, 'internal')] += np.dot(response_vectors[(label, omega, parity, 0)][:N_internal], property_vectors[(label2, 0)][:N_internal])
-            response_functions[(label, label2, omega, 0, 'external')] += np.dot(response_vectors[(label, omega, parity, 0)][N_internal:], property_vectors[(label2, 0)][N_internal:])
+            response_functions[(label, label2, omega, 0)] += parity * np.dot(response_vectors[(label, omega, parity, 0)], property_vectors[(label2, 0)])
+            response_functions[(label, label2, omega, 0, 'internal')] += parity * np.dot(response_vectors[(label, omega, parity, 0)][:N_internal], property_vectors[(label2, 0)][:N_internal])
+            response_functions[(label, label2, omega, 0, 'external')] += parity * np.dot(response_vectors[(label, omega, parity, 0)][N_internal:], property_vectors[(label2, 0)][N_internal:])
             # first
-            response_functions[(label, label2, omega, 1)] += np.dot(response_vectors[(label, omega, parity, 0)], property_vectors[(label2, 1)])
-            response_functions[(label, label2, omega, 1)] += np.dot(response_vectors[(label, omega, parity, 1)], property_vectors[(label2, 0)])
-            response_functions[(label, label2, omega, 1, 'internal')] += np.dot(response_vectors[(label, omega, parity, 0)][:N_internal], property_vectors[(label2, 1)][:N_internal])
-            response_functions[(label, label2, omega, 1, 'internal')] += np.dot(response_vectors[(label, omega, parity, 1)][:N_internal], property_vectors[(label2, 0)][:N_internal])
-            response_functions[(label, label2, omega, 1, 'external')] += np.dot(response_vectors[(label, omega, parity, 0)][N_internal:], property_vectors[(label2, 1)][N_internal:])
-            response_functions[(label, label2, omega, 1, 'external')] += np.dot(response_vectors[(label, omega, parity, 1)][N_internal:], property_vectors[(label2, 0)][N_internal:])
+            response_functions[(label, label2, omega, 1)] += parity * np.dot(response_vectors[(label, omega, parity, 0)], property_vectors[(label2, 1)])
+            response_functions[(label, label2, omega, 1)] += parity * np.dot(response_vectors[(label, omega, parity, 1)], property_vectors[(label2, 0)])
+            response_functions[(label, label2, omega, 1, 'internal')] += parity * np.dot(response_vectors[(label, omega, parity, 0)][:N_internal], property_vectors[(label2, 1)][:N_internal])
+            response_functions[(label, label2, omega, 1, 'internal')] += parity * np.dot(response_vectors[(label, omega, parity, 1)][:N_internal], property_vectors[(label2, 0)][:N_internal])
+            response_functions[(label, label2, omega, 1, 'external')] += parity * np.dot(response_vectors[(label, omega, parity, 0)][N_internal:], property_vectors[(label2, 1)][N_internal:])
+            response_functions[(label, label2, omega, 1, 'external')] += parity * np.dot(response_vectors[(label, omega, parity, 1)][N_internal:], property_vectors[(label2, 0)][N_internal:])
             # second
-            response_functions[(label, label2, omega, 2)] += np.dot(response_vectors[(label, omega, parity, 0)], property_vectors[(label2, 2)])
-            response_functions[(label, label2, omega, 2)] += np.dot(response_vectors[(label, omega, parity, 1)], property_vectors[(label2, 1)])
-            response_functions[(label, label2, omega, 2)] += np.dot(response_vectors[(label, omega, parity, 2)], property_vectors[(label2, 0)])
-            response_functions[(label, label2, omega, 2, 'internal')] += np.dot(response_vectors[(label, omega, parity, 0)][:N_internal], property_vectors[(label2, 2)][:N_internal])
-            response_functions[(label, label2, omega, 2, 'internal')] += np.dot(response_vectors[(label, omega, parity, 1)][:N_internal], property_vectors[(label2, 1)][:N_internal])
-            response_functions[(label, label2, omega, 2, 'internal')] += np.dot(response_vectors[(label, omega, parity, 2)][:N_internal], property_vectors[(label2, 0)][:N_internal])
-            response_functions[(label, label2, omega, 2, 'external')] += np.dot(response_vectors[(label, omega, parity, 0)][N_internal:], property_vectors[(label2, 2)][N_internal:])
-            response_functions[(label, label2, omega, 2, 'external')] += np.dot(response_vectors[(label, omega, parity, 1)][N_internal:], property_vectors[(label2, 1)][N_internal:])
-            response_functions[(label, label2, omega, 2, 'external')] += np.dot(response_vectors[(label, omega, parity, 2)][N_internal:], property_vectors[(label2, 0)][N_internal:])
+            response_functions[(label, label2, omega, 2)] += parity * np.dot(response_vectors[(label, omega, parity, 0)], property_vectors[(label2, 2)])
+            response_functions[(label, label2, omega, 2)] += parity * np.dot(response_vectors[(label, omega, parity, 1)], property_vectors[(label2, 1)])
+            response_functions[(label, label2, omega, 2)] += parity * np.dot(response_vectors[(label, omega, parity, 2)], property_vectors[(label2, 0)])
+            response_functions[(label, label2, omega, 2, 'internal')] += parity * np.dot(response_vectors[(label, omega, parity, 0)][:N_internal], property_vectors[(label2, 2)][:N_internal])
+            response_functions[(label, label2, omega, 2, 'internal')] += parity * np.dot(response_vectors[(label, omega, parity, 1)][:N_internal], property_vectors[(label2, 1)][:N_internal])
+            response_functions[(label, label2, omega, 2, 'internal')] += parity * np.dot(response_vectors[(label, omega, parity, 2)][:N_internal], property_vectors[(label2, 0)][:N_internal])
+            response_functions[(label, label2, omega, 2, 'external')] += parity * np.dot(response_vectors[(label, omega, parity, 0)][N_internal:], property_vectors[(label2, 2)][N_internal:])
+            response_functions[(label, label2, omega, 2, 'external')] += parity * np.dot(response_vectors[(label, omega, parity, 1)][N_internal:], property_vectors[(label2, 1)][N_internal:])
+            response_functions[(label, label2, omega, 2, 'external')] += parity * np.dot(response_vectors[(label, omega, parity, 2)][N_internal:], property_vectors[(label2, 0)][N_internal:])
             if omega == 0.0:
                 for order in (0,1,2):
                     response_functions[(label, label2, omega, order)] *= 2.0
