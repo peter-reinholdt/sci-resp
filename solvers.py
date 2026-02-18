@@ -2,7 +2,7 @@
 
 import numpy as np
 
-def davidson_response(A, b, hdiag, tol=1e-3, maxiter=100, verbose=False, guess=None):
+def davidson_response(A, b, hdiag, tol=1e-6, maxiter=100, verbose=False, guess=None):
     if np.allclose(b, 0.0, atol=1e-20):
         return b
 
@@ -41,7 +41,7 @@ def davidson_response(A, b, hdiag, tol=1e-3, maxiter=100, verbose=False, guess=N
         AV = np.hstack([AV, matvec(vnew)[:, None]])
     raise ValueError('Not converged')
 
-def solve_ci(hvp, hdiag, roots, tol=1e-6, maxiter=100, verbose=False, c0=None):
+def solve_ci(hvp, hdiag, roots, tol=1e-10, maxiter=100, verbose=False, c0=None):
     """
     Solves for eigenvalues and eigenvectors of a hessian.
 

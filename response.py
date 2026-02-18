@@ -244,6 +244,7 @@ def resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, frequency=0.0
     c2[N_internal:] = rhs[N_internal:] / (diagonal[N_internal:] - E0)
     t2 = time.time()
     c2[:N_internal] = davidson_response(lambda v: matvec(v) - E0*v, rhs[:N_internal], diagonal[:N_internal]-E0, verbose=True)
+    c2[:N_internal] -= c0 * np.dot(c0, c2[:N_internal])
     t2 = time.time()
     print('LR-SCI-PT forming c2... done in', t2 - t1, 's')
 
@@ -255,7 +256,7 @@ def resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, frequency=0.0
     t1 = time.time()
     print('LR-SCI-PT compute property vectors...')
     for (label, omega, parity) in perturbations:
-        if label in property_vectors:
+        if (label, 0) in property_vectors:
             continue
         ham_perturbation = ham_perturbations[label]
         # zeroth order
@@ -323,7 +324,7 @@ def resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, frequency=0.0
         rhs = parity*property_vectors[(label, 1)].astype(dtype)
         rhs  -= op.Vmatvec_direct(ham, wfn, N_internal, eps2, response_vectors[(label, omega, parity, 0)].real)
         if dtype == np.complex128:
-            rhs  -= op.Vmatvec_direct(ham, wfn, N_internal, eps2, response_vectors[(label, omega, parity, 0)].imag)
+            rhs  -= 1j * op.Vmatvec_direct(ham, wfn, N_internal, eps2, response_vectors[(label, omega, parity, 0)].imag)
         rhs[:N_internal] = rhs[:N_internal] - c0 * np.dot(c0, rhs[:N_internal])
         response_vector = np.zeros_like(rhs, dtype=dtype)
         _t2 = time.time()
@@ -344,7 +345,7 @@ def resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, frequency=0.0
         rhs = parity*property_vectors[(label, 2)].astype(dtype)
         rhs -= op.Vmatvec_direct(ham, wfn, N_internal, eps2, response_vectors[(label, omega, parity, 1)].real) 
         if dtype == np.complex128:
-            rhs -= op.Vmatvec_direct(ham, wfn, N_internal, eps2, response_vectors[(label, omega, parity, 1)].imag) 
+            rhs -= 1j * op.Vmatvec_direct(ham, wfn, N_internal, eps2, response_vectors[(label, omega, parity, 1)].imag) 
         rhs += E2 * response_vectors[(label, omega, parity, 0)]
 
         rhs[:N_internal] = rhs[:N_internal] - c0 * np.dot(c0, rhs[:N_internal])
@@ -392,7 +393,7 @@ def resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, frequency=0.0
             response_functions[(label, label2, omega, 2, 'external')] += parity * np.dot(response_vectors[(label, omega, parity, 0)][N_internal:], property_vectors[(label2, 2)][N_internal:])
             response_functions[(label, label2, omega, 2, 'external')] += parity * np.dot(response_vectors[(label, omega, parity, 1)][N_internal:], property_vectors[(label2, 1)][N_internal:])
             response_functions[(label, label2, omega, 2, 'external')] += parity * np.dot(response_vectors[(label, omega, parity, 2)][N_internal:], property_vectors[(label2, 0)][N_internal:])
-            if omega == 0.0:
+            if (omega == 0.0) and (gamma == 0.0):
                 for order in (0,1,2):
                     response_functions[(label, label2, omega, order)] *= 2.0
                     response_functions[(label, label2, omega, order, 'internal')] *= 2.0
