@@ -53,7 +53,7 @@ def resp(ham, wfn, op, e_vecs, integrals, perturbations, frequency=0.0, gamma=0.
         couple_property (bool): Activate coupling to property vector
         couple_response (bool): Activate coupling to response vector
         triplet (bool): Is the one-electron operator triplet (otherwise singlet)
-    
+
     Returns:
     """
     couple_property = eps_mu is not None
@@ -100,7 +100,7 @@ def resp(ham, wfn, op, e_vecs, integrals, perturbations, frequency=0.0, gamma=0.
         response_vector = davidson_response(lambda v: matvec(v)-E0w*v, property_vector, hdiag-E0w, verbose=False)
         response_vectors[(label, omega, parity)] = response_vector
 
-    # add determinants coupling through response vector (and solve response equations again) 
+    # add determinants coupling through response vector (and solve response equations again)
     if couple_response:
         while True:
             # add determinants
@@ -152,23 +152,21 @@ def print_pt2_summary(response_functions):
         Δ_0 = response_functions[(label1, label2, omega, 0)]
         Δ_1 = response_functions[(label1, label2, omega, 1)]
         Δ_2 = response_functions[(label1, label2, omega, 2)]
-        Δ_0_int = response_functions[(label1, label2, omega, 0, 'internal')]
         value = Δ_0 + Δ_1 + Δ_2
         ω = omega
         if value.imag != 0:
             # complex
-            imag = value.imag, Δ_0.imag, Δ_1.imag, Δ_2.imag, Δ_0_int.imag
+            imag = value.imag, Δ_0.imag, Δ_1.imag, Δ_2.imag
             value = value.real
             Δ_0 = Δ_0.real
-            Δ_1 = Δ_1.real 
+            Δ_1 = Δ_1.real
             Δ_2 = Δ_2.real
-            Δ_0_int = Δ_0_int.real
-            print(f'Re<<{label1}; {label2}>>({ω=:}) {value=:16.9f} {Δ_0=:16.9f} {Δ_1=:16.9f} {Δ_2=:16.9f} {Δ_0_int=:16.9f}')
-            value, Δ_0, Δ_1, Δ_2, Δ_0_int = imag
-            print(f'Im<<{label1}; {label2}>>({ω=:}) {value=:16.9f} {Δ_0=:16.9f} {Δ_1=:16.9f} {Δ_2=:16.9f} {Δ_0_int=:16.9f}')
+            print(f'Re<<{label1}; {label2}>>({ω=:}) {value=:16.9f} {Δ_0=:16.9f} {Δ_1=:16.9f} {Δ_2=:16.9f}')
+            value, Δ_0, Δ_1, Δ_2 = imag
+            print(f'Im<<{label1}; {label2}>>({ω=:}) {value=:16.9f} {Δ_0=:16.9f} {Δ_1=:16.9f} {Δ_2=:16.9f}')
         else:
             # real
-            print(f'<<{label1}; {label2}>>({ω=:}) {value=:16.9f} {Δ_0=:16.9f} {Δ_1=:16.9f} {Δ_2=:16.9f} {Δ_0_int=:16.9f}')
+            print(f'<<{label1}; {label2}>>({ω=:}) {value=:16.9f} {Δ_0=:16.9f} {Δ_1=:16.9f} {Δ_2=:16.9f}')
 
 
 def resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, frequency=0.0, gamma=0.0, triplet=False, eps_mu=None, eps_resp=None):
@@ -209,7 +207,7 @@ def resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, frequency=0.0
         dets_added += added
     t2 = time.time()
     print('LR-SCI-PT det-add... done in:  ', t2 - t1, 's')
-    
+
     t1 = time.time()
     op.update_diagonal(ham, wfn)
     diagonal = op.diagonal()
@@ -217,7 +215,7 @@ def resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, frequency=0.0
     N_external = N_total - N_internal
     t2 = time.time()
     print('LR-SCI-PT diagonal... done in: ', t2 - t1, 's')
-    
+
     print(f'LR-SCI-PT epsilons  : {eps2=} {eps_mu=} {eps_resp=}')
     print(f'LR-SCI-PT dimensions: {N_internal=} {N_external=} {N_total=}')
 
@@ -228,9 +226,10 @@ def resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, frequency=0.0
     print('LR-SCI-PT forming c1...')
     c1 = Vc0 / (E0 - diagonal)
     E2 = np.dot(c1, Vc0)
+    del Vc0
     t2 = time.time()
     print('LR-SCI-PT V@c0... done in:     ', t2 - t1, 's')
-    
+
     # compute second-order wave function coefficients (c2)
     print('LR-SCI-PT V@c1...')
     t1 = time.time()
@@ -297,108 +296,103 @@ def resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, frequency=0.0
                 assert np.allclose(moments[(label, N, M)], moments[(label, M, N)])
 
     # solve zeroth, first, and second-order linear response equations
+    # and assemble final response functions
     response_vectors = {}
     print('LR-SCI-PT compute response vectors...')
     t1 = time.time()
     dtype = np.complex128 if gamma != 0. else np.float64
+    response_functions = defaultdict(float)
     for (label, omega, parity) in perturbations:
         E0w = E0 + parity * (omega + 1j * gamma)
         print(f'{E0w=}')
         
         # zeroth order
         _t1 = time.time()
-        rhs = parity*property_vectors[(label, 0)]
+        rhs = parity*property_vectors[(label, 0)].astype(dtype)
         response_vector = np.zeros_like(rhs, dtype=dtype)
         response_vector[:N_internal] = davidson_response(lambda v: matvec(v) - E0w*v, rhs[:N_internal], diagonal[:N_internal]-E0w)
         _t2 = time.time()
         print(f'X0-internal {label=}', _t2 - _t1, 's')
         _t1 = time.time()
-        response_vector[:N_internal] = response_vector[:N_internal] - c0 * np.dot(c0, response_vector[:N_internal])
+        response_vector[:N_internal] -= c0 * np.dot(c0, response_vector[:N_internal])
         response_vector[N_internal:] = rhs[N_internal:] / (diagonal[N_internal:] - E0w)
-        response_vectors[(label, omega, parity, 0)] = response_vector
         _t2 = time.time()
         print(f'X0-external {label=}', _t2 - _t1, 's')
 
+        _t1 = time.time()
+        for label2 in integrals.keys():
+            # zeroth-order (0,0)
+            response_functions[(label, label2, omega, 0)] += parity * np.dot(response_vector, property_vectors[(label2, 0)])
+            # first-order (0,1)
+            response_functions[(label, label2, omega, 1)] += parity * np.dot(response_vector, property_vectors[(label2, 1)])
+            # second-order (0,2)
+            response_functions[(label, label2, omega, 2)] += parity * np.dot(response_vector, property_vectors[(label2, 2)])
+        _t2 = time.time()
+        print(f'X0-dots {label=}', _t2 - _t1, 's')
+
+
         # first order
         _t1 = time.time()
-        rhs = parity*property_vectors[(label, 1)].astype(dtype)
-        rhs  -= op.Vmatvec_direct(ham, wfn, N_internal, eps2, response_vectors[(label, omega, parity, 0)].real)
+        rhs[:] = parity*property_vectors[(label, 1)]
+        rhs -= op.Vmatvec_direct(ham, wfn, N_internal, eps2, response_vector.real)
         if dtype == np.complex128:
-            rhs  -= 1j * op.Vmatvec_direct(ham, wfn, N_internal, eps2, response_vectors[(label, omega, parity, 0)].imag)
-        rhs[:N_internal] = rhs[:N_internal] - c0 * np.dot(c0, rhs[:N_internal])
-        response_vector = np.zeros_like(rhs, dtype=dtype)
+            rhs  -= 1j * op.Vmatvec_direct(ham, wfn, N_internal, eps2, response_vector.imag)
+        rhs[:N_internal] -= c0 * np.dot(c0, rhs[:N_internal])
+        X0 = np.copy(response_vector)
         _t2 = time.time()
         print(f'X1-rhs      {label=}', _t2 - _t1, 's')
         _t1 = time.time()
         response_vector[:N_internal] = davidson_response(lambda v: matvec(v) - E0w*v, rhs[:N_internal], diagonal[:N_internal]-E0w)
-        response_vector[:N_internal] = response_vector[:N_internal] - c0 * np.dot(c0, response_vector[:N_internal])
+        response_vector[:N_internal] -= - c0 * np.dot(c0, response_vector[:N_internal])
         _t2 = time.time()
         print(f'X1-internal {label=}', _t2 - _t1, 's')
         _t1 = time.time()
         response_vector[N_internal:] = rhs[N_internal:] / (diagonal[N_internal:] - E0w)
-        response_vectors[(label, omega, parity, 1)] = response_vector
         _t2 = time.time()
         print(f'X1-external {label=}', _t2 - _t1, 's')
 
+        _t1 = time.time()
+        for label2 in integrals.keys():
+            # first-order (1,0)
+            response_functions[(label, label2, omega, 1)] += parity * np.dot(response_vector, property_vectors[(label2, 0)])
+            # second-order (1,1)
+            response_functions[(label, label2, omega, 2)] += parity * np.dot(response_vector, property_vectors[(label2, 1)])
+        _t2 = time.time()
+        print(f'X1-dots {label=}', _t2 - _t1, 's')
+
         # second order
         _t1 = time.time()
-        rhs = parity*property_vectors[(label, 2)].astype(dtype)
-        rhs -= op.Vmatvec_direct(ham, wfn, N_internal, eps2, response_vectors[(label, omega, parity, 1)].real) 
+        rhs[:] = parity*property_vectors[(label, 2)].astype(dtype)
+        rhs -= op.Vmatvec_direct(ham, wfn, N_internal, eps2, response_vector.real)
         if dtype == np.complex128:
-            rhs -= 1j * op.Vmatvec_direct(ham, wfn, N_internal, eps2, response_vectors[(label, omega, parity, 1)].imag) 
-        rhs += E2 * response_vectors[(label, omega, parity, 0)]
+            rhs -= 1j * op.Vmatvec_direct(ham, wfn, N_internal, eps2, response_vector.imag)
+        rhs += E2 * X0
 
-        rhs[:N_internal] = rhs[:N_internal] - c0 * np.dot(c0, rhs[:N_internal])
-        response_vector = np.zeros_like(rhs, dtype=dtype)
+        rhs[:N_internal] -= c0 * np.dot(c0, rhs[:N_internal])
         _t2 = time.time()
         print(f'X2-rhs      {label=}', _t2 - _t1, 's')
         _t1 = time.time()
         response_vector[:N_internal] = davidson_response(lambda v: matvec(v) - E0w*v, rhs[:N_internal], diagonal[:N_internal]-E0w)
-        response_vector[:N_internal] = response_vector[:N_internal] - c0 * np.dot(c0, response_vector[:N_internal])
+        response_vector[:N_internal] -= c0 * np.dot(c0, response_vector[:N_internal])
         _t2 = time.time()
         print(f'X2-internal {label=}', _t2 - _t1, 's')
         _t1 = time.time()
         response_vector[N_internal:] = rhs[N_internal:] / (diagonal[N_internal:] - E0w)
-        response_vectors[(label, omega, parity, 2)] = response_vector
         _t2 = time.time()
         print(f'X2-external {label=}', _t2 - _t1, 's')
+        _t1 = time.time()
+        for label2 in integrals.keys():
+            # second-order (2,0)
+            response_functions[(label, label2, omega, 2)] += parity * np.dot(response_vector, property_vectors[(label2, 0)])
+        _t2 = time.time()
+        print(f'X2-dots {label=}', _t2 - _t1, 's')
     t2 = time.time()
     print('LR-SCI-PT compute response vectors... done in   ', t2 - t1, 's')
-    t2 = time.time()
 
-    # assemble perturbative corrections to the response functions
-    response_functions = defaultdict(float)
-    print('LR-SCI-PT assemble response functions...')
-    t1 = time.time()
+    # for static we have used only the positive parity
     for (label, omega, parity) in perturbations:
-        for label2 in integrals.keys():
-            # zeroth
-            response_functions[(label, label2, omega, 0)] += parity * np.dot(response_vectors[(label, omega, parity, 0)], property_vectors[(label2, 0)])
-            response_functions[(label, label2, omega, 0, 'internal')] += parity * np.dot(response_vectors[(label, omega, parity, 0)][:N_internal], property_vectors[(label2, 0)][:N_internal])
-            response_functions[(label, label2, omega, 0, 'external')] += parity * np.dot(response_vectors[(label, omega, parity, 0)][N_internal:], property_vectors[(label2, 0)][N_internal:])
-            # first
-            response_functions[(label, label2, omega, 1)] += parity * np.dot(response_vectors[(label, omega, parity, 0)], property_vectors[(label2, 1)])
-            response_functions[(label, label2, omega, 1)] += parity * np.dot(response_vectors[(label, omega, parity, 1)], property_vectors[(label2, 0)])
-            response_functions[(label, label2, omega, 1, 'internal')] += parity * np.dot(response_vectors[(label, omega, parity, 0)][:N_internal], property_vectors[(label2, 1)][:N_internal])
-            response_functions[(label, label2, omega, 1, 'internal')] += parity * np.dot(response_vectors[(label, omega, parity, 1)][:N_internal], property_vectors[(label2, 0)][:N_internal])
-            response_functions[(label, label2, omega, 1, 'external')] += parity * np.dot(response_vectors[(label, omega, parity, 0)][N_internal:], property_vectors[(label2, 1)][N_internal:])
-            response_functions[(label, label2, omega, 1, 'external')] += parity * np.dot(response_vectors[(label, omega, parity, 1)][N_internal:], property_vectors[(label2, 0)][N_internal:])
-            # second
-            response_functions[(label, label2, omega, 2)] += parity * np.dot(response_vectors[(label, omega, parity, 0)], property_vectors[(label2, 2)])
-            response_functions[(label, label2, omega, 2)] += parity * np.dot(response_vectors[(label, omega, parity, 1)], property_vectors[(label2, 1)])
-            response_functions[(label, label2, omega, 2)] += parity * np.dot(response_vectors[(label, omega, parity, 2)], property_vectors[(label2, 0)])
-            response_functions[(label, label2, omega, 2, 'internal')] += parity * np.dot(response_vectors[(label, omega, parity, 0)][:N_internal], property_vectors[(label2, 2)][:N_internal])
-            response_functions[(label, label2, omega, 2, 'internal')] += parity * np.dot(response_vectors[(label, omega, parity, 1)][:N_internal], property_vectors[(label2, 1)][:N_internal])
-            response_functions[(label, label2, omega, 2, 'internal')] += parity * np.dot(response_vectors[(label, omega, parity, 2)][:N_internal], property_vectors[(label2, 0)][:N_internal])
-            response_functions[(label, label2, omega, 2, 'external')] += parity * np.dot(response_vectors[(label, omega, parity, 0)][N_internal:], property_vectors[(label2, 2)][N_internal:])
-            response_functions[(label, label2, omega, 2, 'external')] += parity * np.dot(response_vectors[(label, omega, parity, 1)][N_internal:], property_vectors[(label2, 1)][N_internal:])
-            response_functions[(label, label2, omega, 2, 'external')] += parity * np.dot(response_vectors[(label, omega, parity, 2)][N_internal:], property_vectors[(label2, 0)][N_internal:])
             if (omega == 0.0) and (gamma == 0.0):
                 for order in (0,1,2):
                     response_functions[(label, label2, omega, order)] *= 2.0
-                    response_functions[(label, label2, omega, order, 'internal')] *= 2.0
-                    response_functions[(label, label2, omega, order, 'external')] *= 2.0
-    t2 = time.time()
-    print('LR-SCI-PT assemble response functions... done in', t2 - t1, 's')
     print_pt2_summary(response_functions)
-    return response_functions, property_vectors, response_vectors
+    return response_functions
