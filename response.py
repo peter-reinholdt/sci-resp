@@ -297,17 +297,15 @@ def resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, frequency=0.0
 
     # solve zeroth, first, and second-order linear response equations
     # and assemble final response functions
-    response_vectors = {}
     print('LR-SCI-PT compute response vectors...')
     t1 = time.time()
     dtype = np.complex128 if gamma != 0. else np.float64
     response_functions = defaultdict(float)
+    response_vectors = {}
+    # do zeroth order response
     for (label, omega, parity) in perturbations:
-        E0w = E0 + parity * (omega + 1j * gamma)
-        print(f'{E0w=}')
-        
-        # zeroth order
         _t1 = time.time()
+        E0w = E0 + parity * (omega + 1j * gamma)
         rhs = parity*property_vectors[(label, 0)].astype(dtype)
         response_vector = np.zeros_like(rhs, dtype=dtype)
         response_vector[:N_internal] = davidson_response(lambda v: matvec(v) - E0w*v, rhs[:N_internal], diagonal[:N_internal]-E0w)
@@ -318,27 +316,41 @@ def resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, frequency=0.0
         response_vector[N_internal:] = rhs[N_internal:] / (diagonal[N_internal:] - E0w)
         _t2 = time.time()
         print(f'X0-external {label=}', _t2 - _t1, 's')
-
+        response_vectors[(label, omega, parity)] = response_vector
+    # assemble contributions that require zeroth-order response vector
+    for (label, omega, parity) in perturbations:
         _t1 = time.time()
         for label2 in integrals.keys():
-            # zeroth-order (0,0)
-            response_functions[(label, label2, omega, 0)] += parity * np.dot(response_vector, property_vectors[(label2, 0)])
-            # first-order (0,1)
-            response_functions[(label, label2, omega, 1)] += parity * np.dot(response_vector, property_vectors[(label2, 1)])
-            # second-order (0,2)
-            response_functions[(label, label2, omega, 2)] += parity * np.dot(response_vector, property_vectors[(label2, 2)])
+            # zeroth-order (0,0) <XA0|B0>
+            response_functions[(label, label2, omega, 0)] += parity * np.dot(response_vectors[(label, omega, parity)], property_vectors[(label2, 0)])
+            # first-order (0,1)  <XA0|B1>
+            response_functions[(label, label2, omega, 1)] += parity * np.dot(response_vectors[(label, omega, parity)], property_vectors[(label2, 1)])
+            # second-order (0,2) <XA0|B2>
+            response_functions[(label, label2, omega, 2)] += parity * np.dot(response_vectors[(label, omega, parity)], property_vectors[(label2, 2)])
+            # second-order (2,0) is <XA2|B0> = <XA0|B2> - <XA0|V|XB1> + E2 <XA0|XB0>
+            response_functions[(label, label2, omega, 2)] += E2 * parity * np.dot(response_vectors[(label, omega, parity)], response_vectors[(label2, omega, parity)])
+            response_functions[(label2, label, omega, 2)] += parity * np.dot(response_vectors[(label, omega, parity)], property_vectors[(label2, 2)])
         _t2 = time.time()
         print(f'X0-dots {label=}', _t2 - _t1, 's')
-
-
-        # first order
+    # compute and store VX0
+    VX0_vectors = response_vectors
+    for (label, omega, parity) in perturbations:
         _t1 = time.time()
-        rhs[:] = parity*property_vectors[(label, 1)]
-        rhs -= op.Vmatvec_direct(ham, wfn, N_internal, eps2, response_vector.real)
+        response_vector = response_vectors[(label, omega, parity)]
+        VX0 = np.zeros_like(response_vector, dtype=dtype)
+        VX0 += op.Vmatvec_direct(ham, wfn, N_internal, eps2, response_vector.real)
         if dtype == np.complex128:
-            rhs  -= 1j * op.Vmatvec_direct(ham, wfn, N_internal, eps2, response_vector.imag)
+            VX0 += 1j * op.Vmatvec_direct(ham, wfn, N_internal, eps2, response_vector.imag)
+        VX0_vectors[(label, omega, parity)] = VX0
+        _t2 = time.time()
+        print(f'V@X0 {label=}', _t2 - _t1, 's')
+    # do first-order response
+    for (label, omega, parity) in perturbations:
+        E0w = E0 + parity * (omega + 1j * gamma)
+        _t1 = time.time()
+        response_vector = np.zeros_like(rhs, dtype=dtype)
+        rhs[:] = parity*property_vectors[(label, 1)] - VX0_vectors[(label, omega, parity)]
         rhs[:N_internal] -= c0 * np.dot(c0, rhs[:N_internal])
-        X0 = np.copy(response_vector)
         _t2 = time.time()
         print(f'X1-rhs      {label=}', _t2 - _t1, 's')
         _t1 = time.time()
@@ -352,47 +364,24 @@ def resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, frequency=0.0
         print(f'X1-external {label=}', _t2 - _t1, 's')
 
         _t1 = time.time()
+        # assemble contributions that require zeroth-order response vector
         for label2 in integrals.keys():
-            # first-order (1,0)
+            # first-order (1,0)  <XA1|B0>
             response_functions[(label, label2, omega, 1)] += parity * np.dot(response_vector, property_vectors[(label2, 0)])
-            # second-order (1,1)
+            # second-order (1,1) <XA1|B1>
             response_functions[(label, label2, omega, 2)] += parity * np.dot(response_vector, property_vectors[(label2, 1)])
+            # second-order (2,0) <XA0|V|XB1> contribution
+            response_functions[(label, label2, omega, 2)] -= parity * np.dot(response_vector, VX0_vectors[(label2, omega, parity)])
         _t2 = time.time()
         print(f'X1-dots {label=}', _t2 - _t1, 's')
-
-        # second order
-        _t1 = time.time()
-        rhs[:] = parity*property_vectors[(label, 2)].astype(dtype)
-        rhs -= op.Vmatvec_direct(ham, wfn, N_internal, eps2, response_vector.real)
-        if dtype == np.complex128:
-            rhs -= 1j * op.Vmatvec_direct(ham, wfn, N_internal, eps2, response_vector.imag)
-        rhs += E2 * X0
-
-        rhs[:N_internal] -= c0 * np.dot(c0, rhs[:N_internal])
-        _t2 = time.time()
-        print(f'X2-rhs      {label=}', _t2 - _t1, 's')
-        _t1 = time.time()
-        response_vector[:N_internal] = davidson_response(lambda v: matvec(v) - E0w*v, rhs[:N_internal], diagonal[:N_internal]-E0w)
-        response_vector[:N_internal] -= c0 * np.dot(c0, response_vector[:N_internal])
-        _t2 = time.time()
-        print(f'X2-internal {label=}', _t2 - _t1, 's')
-        _t1 = time.time()
-        response_vector[N_internal:] = rhs[N_internal:] / (diagonal[N_internal:] - E0w)
-        _t2 = time.time()
-        print(f'X2-external {label=}', _t2 - _t1, 's')
-        _t1 = time.time()
-        for label2 in integrals.keys():
-            # second-order (2,0)
-            response_functions[(label, label2, omega, 2)] += parity * np.dot(response_vector, property_vectors[(label2, 0)])
-        _t2 = time.time()
-        print(f'X2-dots {label=}', _t2 - _t1, 's')
     t2 = time.time()
     print('LR-SCI-PT compute response vectors... done in   ', t2 - t1, 's')
 
     # for static we have used only the positive parity
     for (label, omega, parity) in perturbations:
             if (omega == 0.0) and (gamma == 0.0):
-                for order in (0,1,2):
-                    response_functions[(label, label2, omega, order)] *= 2.0
+                for label2 in integrals.keys():
+                    for order in (0,1,2):
+                        response_functions[(label, label2, omega, order)] *= 2.0
     print_pt2_summary(response_functions)
     return response_functions
