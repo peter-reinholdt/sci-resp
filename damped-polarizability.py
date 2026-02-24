@@ -87,7 +87,7 @@ wfn, op, e_vecs, response_vectors, property_vectors = resp(ham, wfn, op, e_vecs,
 alphas = []
 for i, label in enumerate(labels):
     alpha = np.dot(response_vectors[(label, omega, 1)], property_vectors[label])
-    alpha += np.dot(response_vectors[(label, omega, -1)], -property_vectors[label])
+    alpha += np.dot(response_vectors[(label, omega, -1)], property_vectors[label])
     alphas.append(alpha)
     print(f'{label=} {omega=} {alpha.real=: 16.9f} {alpha.imag=: 16.9f}', flush=True)
 alpha = np.average(alphas)

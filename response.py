@@ -96,7 +96,7 @@ def resp(ham, wfn, op, e_vecs, integrals, perturbations, frequency=0.0, gamma=0.
     response_vectors = {}
     for (label, omega, parity) in perturbations:
         E0w = E0 + parity * (omega + 1j * gamma)
-        property_vector = parity*property_vectors[label]
+        property_vector = property_vectors[label]
         response_vector = davidson_response(lambda v: matvec(v)-E0w*v, property_vector, hdiag-E0w, verbose=False)
         response_vectors[(label, omega, parity)] = response_vector
 
@@ -133,7 +133,7 @@ def resp(ham, wfn, op, e_vecs, integrals, perturbations, frequency=0.0, gamma=0.
             E0 = np.dot(e_vecs[:,0], matvec(e_vecs[:,0]))
             for (label, omega, parity) in perturbations:
                 E0w = E0 + parity * (omega + 1j * gamma)
-                property_vector = parity*property_vectors[label]
+                property_vector = property_vectors[label]
                 response_vector = davidson_response(lambda v: matvec(v)-E0w*v, property_vector, hdiag-E0w, verbose=False)
                 response_vectors[(label, omega, parity)] = response_vector
             # exit when almost no new determinants are added
@@ -306,7 +306,7 @@ def resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, frequency=0.0
     for (label, omega, parity) in perturbations:
         _t1 = time.time()
         E0w = E0 + parity * (omega + 1j * gamma)
-        rhs = parity*property_vectors[(label, 0)].astype(dtype)
+        rhs = property_vectors[(label, 0)].astype(dtype)
         response_vector = np.zeros_like(rhs, dtype=dtype)
         response_vector[:N_internal] = davidson_response(lambda v: matvec(v) - E0w*v, rhs[:N_internal], diagonal[:N_internal]-E0w)
         _t2 = time.time()
@@ -322,14 +322,15 @@ def resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, frequency=0.0
         _t1 = time.time()
         for label2 in integrals.keys():
             # zeroth-order (0,0) <XA0|B0>
-            response_functions[(label, label2, omega, 0)] += parity * np.dot(response_vectors[(label, omega, parity)], property_vectors[(label2, 0)])
+            response_functions[(label, label2, omega, 0)] += np.dot(response_vectors[(label, omega, parity)], property_vectors[(label2, 0)])
             # first-order (0,1)  <XA0|B1>
-            response_functions[(label, label2, omega, 1)] += parity * np.dot(response_vectors[(label, omega, parity)], property_vectors[(label2, 1)])
+            response_functions[(label, label2, omega, 1)] += np.dot(response_vectors[(label, omega, parity)], property_vectors[(label2, 1)])
             # second-order (0,2) <XA0|B2>
-            response_functions[(label, label2, omega, 2)] += parity * np.dot(response_vectors[(label, omega, parity)], property_vectors[(label2, 2)])
-            # second-order (2,0) is <XA2|B0> = <XA0|B2> - <XA0|V|XB1> + E2 <XA0|XB0>
-            response_functions[(label, label2, omega, 2)] += E2 * parity * np.dot(response_vectors[(label, omega, parity)], response_vectors[(label2, omega, parity)])
-            response_functions[(label2, label, omega, 2)] += parity * np.dot(response_vectors[(label, omega, parity)], property_vectors[(label2, 2)])
+            response_functions[(label, label2, omega, 2)] += np.dot(response_vectors[(label, omega, parity)], property_vectors[(label2, 2)])
+            # second-order (2,0) <XB2|A0> = <XB0|A2> - <XB0|V|XA1> + E2 <XA0|XB0>
+            # we add <XB0|A2> and E2 <XA0|XB0> here, <XB0|V|XA1> done when we have XA1 and V@XB0
+            response_functions[(label, label2, omega, 2)] += np.dot(response_vectors[(label2, omega, parity)], property_vectors[(label, 2)])
+            response_functions[(label, label2, omega, 2)] += E2 * np.dot(response_vectors[(label, omega, parity)], response_vectors[(label2, omega, parity)])
         _t2 = time.time()
         print(f'X0-dots {label=}', _t2 - _t1, 's')
     # compute and store VX0
@@ -349,7 +350,7 @@ def resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, frequency=0.0
         E0w = E0 + parity * (omega + 1j * gamma)
         _t1 = time.time()
         response_vector = np.zeros_like(rhs, dtype=dtype)
-        rhs[:] = parity*property_vectors[(label, 1)] - VX0_vectors[(label, omega, parity)]
+        rhs[:] = property_vectors[(label, 1)] - VX0_vectors[(label, omega, parity)]
         rhs[:N_internal] -= c0 * np.dot(c0, rhs[:N_internal])
         _t2 = time.time()
         print(f'X1-rhs      {label=}', _t2 - _t1, 's')
@@ -367,11 +368,12 @@ def resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, frequency=0.0
         # assemble contributions that require zeroth-order response vector
         for label2 in integrals.keys():
             # first-order (1,0)  <XA1|B0>
-            response_functions[(label, label2, omega, 1)] += parity * np.dot(response_vector, property_vectors[(label2, 0)])
+            response_functions[(label, label2, omega, 1)] += np.dot(response_vector, property_vectors[(label2, 0)])
             # second-order (1,1) <XA1|B1>
-            response_functions[(label, label2, omega, 2)] += parity * np.dot(response_vector, property_vectors[(label2, 1)])
-            # second-order (2,0) <XA0|V|XB1> contribution
-            response_functions[(label, label2, omega, 2)] -= parity * np.dot(response_vector, VX0_vectors[(label2, omega, parity)])
+            response_functions[(label, label2, omega, 2)] += np.dot(response_vector, property_vectors[(label2, 1)])
+            # second-order (2,0) <XB2|A0> = <XB0|A2> - <XB0|V|XA1> + E2 <XA0|XB0>
+            # we add the -<XB0|V|XA1> contribution here, <XB0|A2> + E2 <XA0|XB0> was added with the zeroth-order vectors
+            response_functions[(label, label2, omega, 2)] -= np.dot(response_vector, VX0_vectors[(label2, omega, parity)])
         _t2 = time.time()
         print(f'X1-dots {label=}', _t2 - _t1, 's')
     t2 = time.time()
