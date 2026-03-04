@@ -285,6 +285,9 @@ def resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, frequency=0.0
         property_vectors[(label, 2)][:N_internal] -= c0 * (moments[(label, 0, 2)] + moments[(label, 1, 1)] + moments[(label, 2, 0)])
         property_vectors[(label, 2)] -= c1 * (moments[(label, 0, 1)] + moments[(label, 1, 0)])
         property_vectors[(label, 2)] -= c2 * (moments[(label, 0, 0)])
+    # c1, c2 no longer needed
+    del c1
+    del c2
     t2 = time.time()
     print('LR-SCI-PT compute property vectors... done in', t2 - t1, 's')
     # verify check <N|X|M> = <M|X|N>*
@@ -331,6 +334,10 @@ def resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, frequency=0.0
             response_functions[(label, label2, omega, 2)] += E2 * np.dot(response_vectors[(label, omega, parity)], response_vectors[(label2, omega, parity)])
         _t2 = time.time()
         print(f'X0-dots {label=}', _t2 - _t1, 's')
+    # A2 no longer needed
+    for label in integrals.keys():
+        del property_vectors[(label, 2)]
+
     # compute and store VX0
     VX0_vectors = response_vectors
     for (label, omega, parity) in perturbations:
