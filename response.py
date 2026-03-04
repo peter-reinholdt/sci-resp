@@ -105,12 +105,11 @@ def resp(ham, wfn, op, e_vecs, integrals, perturbations, frequency=0.0, gamma=0.
         while True:
             # add determinants
             dets_added = 0
+            screen_vector = np.zeros(len(wfn.to_det_array()))
             for (label, omega, parity), response_vector in response_vectors.items():
-                num_determinants = len(wfn.to_det_array())
-                response_vector = zeropad(response_vector, num_determinants)
-                dets_added += pyci.add_hci(ham, wfn, response_vector.real, eps=eps_resp)
-                if np.any(response_vector.imag) != 0.:
-                    dets_added += pyci.add_hci(ham, wfn, response_vector.imag, eps=eps_resp)
+                screen_vector = np.max([np.abs(response_vector), screen_vector], axis=0)
+            dets_added = pyci.add_hci(ham, wfn, screen_vector, eps=eps_resp)
+            del screen_vector
             num_determinants = len(wfn.to_det_array())
             e_vecs = zeropad(e_vecs, num_determinants)
             op.update(ham, wfn)
@@ -190,21 +189,20 @@ def resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, frequency=0.0
     # select perturbative space
     print(f'LR-SCI-PT det-add...')
     t1 = time.time()
-    # from Hamiltonian
-    dets_added = pyci.add_hci(ham, wfn, c0, eps2)
-    print('Added', dets_added, 'from Hamiltonian')
     # from property operator
+    dets_added = 0
     ham_perturbations = {label: pyci.hamiltonian(0., integral, ham.two_mo*0) for (label, integral) in integrals.items()}
     for (label, ham_perturbation) in ham_perturbations.items():
         added = pyci.add_hci(ham_perturbation, wfn, c0, eps=eps2)
         print('Added', added, 'from operator', label)
         dets_added += added
+    # from Hamiltonian
+    screen_vector = np.abs(c0)
     for (label, omega, parity), response_vector in response_vectors.items():
-        added = pyci.add_hci(ham, wfn, response_vector.real, eps=eps2)
-        if np.any(response_vector.imag != 0):
-            added += pyci.add_hci(ham, wfn, response_vector.imag, eps=eps2)
-        print('Added', added, 'from response vector', (label, omega, parity))
-        dets_added += added
+        screen_vector = np.max([np.abs(response_vector), screen_vector], axis=0)
+    added = pyci.add_hci(ham, wfn, screen_vector, eps=eps2)
+    del screen_vector
+    print('Added', added, 'from c0 and response vectors')
     t2 = time.time()
     print('LR-SCI-PT det-add... done in:  ', t2 - t1, 's')
 
