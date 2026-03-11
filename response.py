@@ -39,7 +39,7 @@ def zeropad(x, N):
     out[:len(x), ...] = x
     return out
 
-def resp(ham, wfn, op, e_vecs, integrals, perturbations, frequency=0.0, gamma=0.0, triplet=False, eps_mu=None, eps_resp=None):
+def resp(ham, wfn, op, e_vecs, integrals, perturbations, frequency=0.0, gamma=0.0, triplet=False, eps_mu=None, eps_resp=None, overwrite=True):
     """
     Args:
         ham (pyci.Hamiltonian): electronic hamiltonian
@@ -53,11 +53,21 @@ def resp(ham, wfn, op, e_vecs, integrals, perturbations, frequency=0.0, gamma=0.
         couple_property (bool): Activate coupling to property vector
         couple_response (bool): Activate coupling to response vector
         triplet (bool): Is the one-electron operator triplet (otherwise singlet)
+        overwrite (bool): Allow overwriting of the input wfn and op?
 
     Returns:
     """
     couple_property = eps_mu is not None
     couple_response = eps_resp is not None
+    
+    if not overwrite:
+        # avoid overwriting wfn, op
+        _wfn = pyci.fullci_wfn(ham.nbasis, wfn.nocc_up, wfn.nocc_dn)
+        for det in wfn.to_det_array():
+            _wfn.add_det(det)
+        wfn = _wfn
+        op = pyci.sparse_op(ham, wfn)
+
     matvec = lambda v: wrap_matvec(op, v)
     hdiag = op.diagonal()
     e_vals, e_vecs = solve_ci(matvec, hdiag, roots=1, c0=e_vecs, verbose=True)
@@ -137,11 +147,20 @@ def resp(ham, wfn, op, e_vecs, integrals, perturbations, frequency=0.0, gamma=0.
                 response_vectors[(label, omega, parity)] = response_vector
             # exit when almost no new determinants are added
             if dets_added / num_determinants < 0.01:
-                print(f'finised_couple_response {eps_resp=} {e_vals[0]=} {delta_e=} {dets_added=} {num_determinants=}')
+                print(f'finished_couple_response {eps_resp=} {e_vals[0]=} {delta_e=} {dets_added=} {num_determinants=}')
                 break
             else:
                 print(f'couple_response {eps_resp=} {e_vals[0]=} {delta_e=} {dets_added=} {num_determinants=}')
-    return wfn, op, e_vecs, response_vectors, property_vectors
+    response_functions = defaultdict(float)
+    for (label, omega, parity) in perturbations:
+        for label2 in integrals.keys():
+            response_functions[(label, label2, omega)] += np.dot(response_vectors[(label, omega, parity)], property_vectors[label2])
+    # for static we have used only the positive parity
+    for (label, omega, parity) in perturbations:
+            if (omega == 0.0) and (gamma == 0.0):
+                for label2 in integrals.keys():
+                    response_functions[(label, label2, omega)] *= 2.0
+    return wfn, op, e_vecs, response_vectors, property_vectors, response_functions
 
 
 def print_pt2_summary(response_functions):
@@ -173,7 +192,7 @@ def resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, frequency=0.0
     # (we run GS, GS+V, GS+X, or GS+V+X)
     print('LR-SCI-PT solving variational equations...')
     t1 = time.time()
-    wfn, op, e_vecs, response_vectors, property_vectors = resp(ham, wfn, op, e_vecs, integrals, perturbations, frequency=frequency, gamma=gamma, triplet=triplet, eps_mu=eps_mu, eps_resp=eps_resp)
+    wfn, op, e_vecs, response_vectors, property_vectors, response_functions = resp(ham, wfn, op, e_vecs, integrals, perturbations, frequency=frequency, gamma=gamma, triplet=triplet, eps_mu=eps_mu, eps_resp=eps_resp)
     t2 = time.time()
     print('LR-SCI-PT solving variational equations... done in', t2 - t1, 's')
     c0 = e_vecs.ravel()
