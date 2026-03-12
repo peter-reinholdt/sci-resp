@@ -5,7 +5,7 @@ import pyscf
 import numpy as np
 import pyci
 from solvers import solve_ci
-from response import resp, wrap_matvec, one_electron_ao2mo
+from response import resp, wrap_matvec, one_electron_ao2mo, print_var_summary
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--xyz', type=str, required=True)
@@ -71,21 +71,13 @@ while dets_added:
     print(f'{niter=} {eps=} {e_vals[0]=} {delta_e=} {dets_added=} {num_determinants=}')
 
 
-gamma = 0.0
-omega = 0.0
 dipole_integrals_ao = m.intor('int1e_r')
 dipole_integrals_mo = [one_electron_ao2mo(cas, integral) for integral in dipole_integrals_ao]
 labels = ['X', 'Y', 'Z']
 integrals  = {label: integral for (label, integral) in zip(labels, dipole_integrals_mo)}
 perturbations = [(label, frequency, parity) for label in labels 
-                                            for frequency in [omega] 
-                                            for parity in [1]]
+                                            for frequency in [0.0] 
+                                            for parity in [0]]
 
-wfn, op, e_vecs, response_vectors, property_vectors = resp(ham, wfn, op, e_vecs, integrals, perturbations, eps_mu=eps, eps_resp=eps)
-alphas = []
-for i, label in enumerate(labels):
-    alpha = 2*np.dot(response_vectors[(label, omega, 1.0)].real, property_vectors[label])
-    alphas.append(alpha)
-    print(f'{label=} {omega=} {alpha=}', flush=True)
-alpha_average = np.average(alphas)
-print(f'Average {omega=} {alpha_average=}')
+wfn, op, e_vecs, response_vectors, property_vectors, response_functions = resp(ham, wfn, op, e_vecs, integrals, perturbations, eps_mu=eps, eps_resp=eps)
+print_var_summary(response_functions)

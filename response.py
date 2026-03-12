@@ -163,6 +163,21 @@ def resp(ham, wfn, op, e_vecs, integrals, perturbations, frequency=0.0, gamma=0.
     return wfn, op, e_vecs, response_vectors, property_vectors, response_functions
 
 
+def print_var_summary(response_functions):
+    labels = [key for key in response_functions.keys()]
+    for (label1, label2, omega) in labels:
+        value = response_functions[(label1, label2, omega)]
+        ω = omega
+        if value.imag != 0:
+            imag = value.imag
+            value = value.real
+            print(f'Re<<{label1}; {label2}>>({ω=:}) {value=:16.9f}')
+            value = imag
+            print(f'Im<<{label1}; {label2}>>({ω=:}) {value=:16.9f}')
+        else:
+            value = value.real
+            print(f'<<{label1}; {label2}>>({ω=:}) {value=:16.9f}')
+
 def print_pt2_summary(response_functions):
     labels = [key for key in response_functions.keys() if key[-1] == 2]
     for label in labels:
@@ -183,13 +198,22 @@ def print_pt2_summary(response_functions):
             value, Δ_0, Δ_1, Δ_2 = imag
             print(f'Im<<{label1}; {label2}>>({ω=:}) {value=:16.9f} {Δ_0=:16.9f} {Δ_1=:16.9f} {Δ_2=:16.9f}')
         else:
-            # real
+            value = value.real
             print(f'<<{label1}; {label2}>>({ω=:}) {value=:16.9f} {Δ_0=:16.9f} {Δ_1=:16.9f} {Δ_2=:16.9f}')
 
 
-def resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, frequency=0.0, gamma=0.0, triplet=False, eps_mu=None, eps_resp=None):
+def resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, frequency=0.0, gamma=0.0, triplet=False, eps_mu=None, eps_resp=None, overwrite=True):
     # solve the internal/variational LR problem
     # (we run GS, GS+V, GS+X, or GS+V+X)
+    #
+    if not overwrite:
+        # avoid overwriting wfn, op
+        _wfn = pyci.fullci_wfn(ham.nbasis, wfn.nocc_up, wfn.nocc_dn)
+        for det in wfn.to_det_array():
+            _wfn.add_det(det)
+        wfn = _wfn
+        op = pyci.sparse_op(ham, wfn)
+
     print('LR-SCI-PT solving variational equations...')
     t1 = time.time()
     wfn, op, e_vecs, response_vectors, property_vectors, response_functions = resp(ham, wfn, op, e_vecs, integrals, perturbations, frequency=frequency, gamma=gamma, triplet=triplet, eps_mu=eps_mu, eps_resp=eps_resp)
@@ -313,7 +337,7 @@ def resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, frequency=0.0
     for label in integrals.keys():
         for N in (0,1,2):
             for M in (0,1,2):
-                assert np.allclose(moments[(label, N, M)], moments[(label, M, N)])
+                assert np.allclose(moments[(label, N, M)], moments[(label, M, N)]) or np.allclose(moments[(label, N, M)], -moments[(label, M, N)])
 
     # solve zeroth, first, and second-order linear response equations
     # and assemble final response functions
@@ -349,8 +373,8 @@ def resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, frequency=0.0
             response_functions[(label, label2, omega, 2)] += np.dot(response_vectors[(label, omega, parity)], property_vectors[(label2, 2)])
             # second-order (2,0) <XB2|A0> = <XB0|A2> - <XB0|V|XA1> + E2 <XA0|XB0>
             # we add <XB0|A2> and E2 <XA0|XB0> here, <XB0|V|XA1> done when we have XA1 and V@XB0
-            response_functions[(label, label2, omega, 2)] += np.dot(response_vectors[(label2, omega, parity)], property_vectors[(label, 2)])
-            response_functions[(label, label2, omega, 2)] += E2 * np.dot(response_vectors[(label, omega, parity)], response_vectors[(label2, omega, parity)])
+            response_functions[(label, label2, omega, 2)] += np.dot(response_vectors[(label2, omega, -parity)], property_vectors[(label, 2)])
+            response_functions[(label, label2, omega, 2)] += E2 * np.dot(response_vectors[(label, omega, parity)], response_vectors[(label2, omega, -parity)])
         _t2 = time.time()
         print(f'X0-dots {label=}', _t2 - _t1, 's')
     # A2 no longer needed
@@ -380,7 +404,7 @@ def resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, frequency=0.0
         print(f'X1-rhs      {label=}', _t2 - _t1, 's')
         _t1 = time.time()
         response_vector[:N_internal] = davidson_response(lambda v: matvec(v) - E0w*v, rhs[:N_internal], diagonal[:N_internal]-E0w)
-        response_vector[:N_internal] -= - c0 * np.dot(c0, response_vector[:N_internal])
+        response_vector[:N_internal] -= c0 * np.dot(c0, response_vector[:N_internal])
         _t2 = time.time()
         print(f'X1-internal {label=}', _t2 - _t1, 's')
         _t1 = time.time()
@@ -397,7 +421,7 @@ def resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, frequency=0.0
             response_functions[(label, label2, omega, 2)] += np.dot(response_vector, property_vectors[(label2, 1)])
             # second-order (2,0) <XB2|A0> = <XB0|A2> - <XB0|V|XA1> + E2 <XA0|XB0>
             # we add the -<XB0|V|XA1> contribution here, <XB0|A2> + E2 <XA0|XB0> was added with the zeroth-order vectors
-            response_functions[(label, label2, omega, 2)] -= np.dot(response_vector, VX0_vectors[(label2, omega, parity)])
+            response_functions[(label, label2, omega, 2)] -= np.dot(response_vector, VX0_vectors[(label2, omega, -parity)])
         _t2 = time.time()
         print(f'X1-dots {label=}', _t2 - _t1, 's')
     t2 = time.time()
@@ -409,5 +433,10 @@ def resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, frequency=0.0
                 for label2 in integrals.keys():
                     for order in (0,1,2):
                         response_functions[(label, label2, omega, order)] *= 2.0
+    # also store the total value
+    for (label, omega, parity) in perturbations:
+        for label2 in integrals.keys():
+            for order in (0,1,2):
+                response_functions[(label, label2, omega)] += response_functions[(label, label2, omega, order)]
     print_pt2_summary(response_functions)
     return response_functions

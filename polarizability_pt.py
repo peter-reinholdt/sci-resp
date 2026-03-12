@@ -73,14 +73,12 @@ while dets_added:
     print(f'{niter=} {eps=} {e_vals[0]=} {delta_e=} {dets_added=} {num_determinants=}')
 
 
-gamma = 0.0
-omega = 0.0
 dipole_integrals_ao = m.intor('int1e_r')
 dipole_integrals_mo = [one_electron_ao2mo(cas, integral) for integral in dipole_integrals_ao]
 labels = ['X', 'Y', 'Z']
 integrals  = {label: integral for (label, integral) in zip(labels, dipole_integrals_mo)}
 perturbations = [(label, frequency, parity) for label in labels 
-                                            for frequency in [omega] 
-                                            for parity in [1]]
+                                            for frequency in [0.0] 
+                                            for parity in [0]]
 
 resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, eps_mu=eps_mu, eps_resp=eps_resp)

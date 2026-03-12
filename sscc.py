@@ -98,7 +98,7 @@ labels = [f'PSO_{ia}_{cart}' for ia in range(mol.natm) for cart in 'xyz']
 integrals  = {label: integral for (label, integral) in zip(labels, pso_integrals_mo)}
 perturbations = [(label, frequency, parity) for label in labels 
                                             for frequency in [0.0] 
-                                            for parity in [1]]
+                                            for parity in [0]]
 rsp_wfn, rsp_op, rsp_e_vecs, response_vectors, property_vectors, response_functions = resp(ham, wfn, op, e_vecs, integrals, perturbations, eps_mu=eps, eps_resp=eps, triplet=False, overwrite=False)
 for k, (i,j) in enumerate(nuc_pair):
     for ix, x in enumerate('xyz'):
@@ -114,7 +114,7 @@ labels = [f'SD_{ia}_{cart1}{cart2}' for ia in range(mol.natm) for cart1 in 'xyz'
 integrals  = {label: integral for (label, integral) in zip(labels, sd_integrals_mo)}
 perturbations = [(label, frequency, parity) for label in labels 
                                             for frequency in [0.0] 
-                                            for parity in [1]]
+                                            for parity in [0]]
 rsp_wfn, rsp_op, rsp_e_vecs, response_vectors, property_vectors, response_functions = resp(ham, wfn, op, e_vecs, integrals, perturbations, eps_mu=eps, eps_resp=eps, triplet=True, overwrite=False)
 for k, (i,j) in enumerate(nuc_pair):
     for ix, x in enumerate('xyz'):
@@ -131,7 +131,7 @@ labels = [f'FC_{ia}' for ia in range(mol.natm)]
 integrals  = {label: integral for (label, integral) in zip(labels, fc_integrals_mo)}
 perturbations = [(label, frequency, parity) for label in labels 
                                             for frequency in [0.0] 
-                                            for parity in [1]]
+                                            for parity in [0]]
 rsp_wfn, rsp_op, rsp_e_vecs, response_vectors, property_vectors, response_functions = resp(ham, wfn, op, e_vecs, integrals, perturbations, eps_mu=eps, eps_resp=eps, triplet=True, overwrite=False)
 
 for k, (i,j) in enumerate(nuc_pair):
