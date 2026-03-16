@@ -1,7 +1,5 @@
 #!/usr/bin/env python
 
-import sys
-import time
 import argparse
 import pyscf
 import numpy as np
@@ -17,7 +15,8 @@ parser.add_argument('--ncore', type=int, default=0)
 parser.add_argument('--couple-property', action=argparse.BooleanOptionalAction, default=True)
 parser.add_argument('--couple-response', action=argparse.BooleanOptionalAction, default=True)
 parser.add_argument('--eps', type=float, default=1e-3)
-parser.add_argument('--eps2', type=float, default=1e-9)
+#parser.add_argument('--eps2', type=float, default=1e-9)
+#parser.add_argument('--eps2mult', type=float, default=1e-9)
 parser.add_argument('--natorb', action='store_true')
 args = parser.parse_args()
 
@@ -55,7 +54,8 @@ niter = 0
 
 # 1) Solve for |Psi_0>
 eps = args.eps
-eps2 = args.eps2
+eps2 = args.eps * 1e-2
+eps2mult = args.eps * 1e-5
 eps_mu = eps if args.couple_property else None
 eps_resp = eps if args.couple_response else None
 
@@ -81,7 +81,7 @@ if args.natorb:
     print("Forming natural orbitals and reforming SCI ground state wave function...")
     d1 = pyci.compute_rdm1(wfn, e_vecs[0])
     rdm1 = d1[0] + d1[1]
-    rdm1 = _make_rdm1_on_mo(rdm1, ncore, ncas, m.nao)
+    rdm1 = _make_rdm1_on_mo(rdm1, ncore, ncas, mol.nao)
     noons, natorbs = np.linalg.eigh(rdm1)
     noons = np.flip(noons)
     print('Natural occupation numbers:', noons)
@@ -90,7 +90,7 @@ if args.natorb:
     mf.mo_coeff = mf.mo_coeff @ natorbs
     cas = pyscf.mcscf.CASCI(mf, ncas, nelcas)
     h1, ecore = cas.h1e_for_cas()
-    eri = pyscf.ao2mo.full(m, mf.mo_coeff[:, ncore:ncore+ncas], aosym='1').reshape(ncas, ncas, ncas, ncas)
+    eri = pyscf.ao2mo.full(mol, mf.mo_coeff[:, ncore:ncore+ncas], aosym='1').reshape(ncas, ncas, ncas, ncas)
     ham = pyci.hamiltonian(ecore, h1, eri.transpose(0,2,1,3))
     wfn = pyci.fullci_wfn(ham.nbasis, *nelec)
     wfn.add_hartreefock_det()
@@ -144,7 +144,7 @@ integrals  = {label: integral for (label, integral) in zip(labels, pso_integrals
 perturbations = [(label, frequency, parity) for label in labels 
                                             for frequency in [0.0] 
                                             for parity in [0]]
-response_functions = resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, eps_mu=eps, eps_resp=eps, triplet=False, overwrite=False)
+response_functions = resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, eps2mult, eps_mu=eps, eps_resp=eps, triplet=False, overwrite=False)
 for k, (i,j) in enumerate(nuc_pair):
     for ix, x in enumerate('xyz'):
         for iy, y in enumerate('xyz'):
@@ -160,7 +160,7 @@ integrals  = {label: integral for (label, integral) in zip(labels, sd_integrals_
 perturbations = [(label, frequency, parity) for label in labels 
                                             for frequency in [0.0] 
                                             for parity in [0]]
-response_functions = resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, eps_mu=eps, eps_resp=eps, triplet=True, overwrite=False)
+response_functions = resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, eps2mult, eps_mu=eps, eps_resp=eps, triplet=True, overwrite=False)
 for k, (i,j) in enumerate(nuc_pair):
     for ix, x in enumerate('xyz'):
         for iy, y in enumerate('xyz'):
@@ -177,7 +177,7 @@ integrals  = {label: integral for (label, integral) in zip(labels, fc_integrals_
 perturbations = [(label, frequency, parity) for label in labels 
                                             for frequency in [0.0] 
                                             for parity in [0]]
-response_functions = resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, eps_mu=eps, eps_resp=eps, triplet=True, overwrite=False)
+response_functions = resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, eps2mult, eps_mu=eps, eps_resp=eps, triplet=True, overwrite=False)
 print(response_functions)
 
 for k, (i,j) in enumerate(nuc_pair):

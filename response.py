@@ -202,7 +202,7 @@ def print_pt2_summary(response_functions):
             print(f'<<{label1}; {label2}>>({ω=:}) {value=:16.9f} {Δ_0=:16.9f} {Δ_1=:16.9f} {Δ_2=:16.9f}')
 
 
-def resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, frequency=0.0, gamma=0.0, triplet=False, eps_mu=None, eps_resp=None, overwrite=True):
+def resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, eps2mult, frequency=0.0, gamma=0.0, triplet=False, eps_mu=None, eps_resp=None, overwrite=True):
     # solve the internal/variational LR problem
     # (we run GS, GS+V, GS+X, or GS+V+X)
     #
@@ -257,13 +257,13 @@ def resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, frequency=0.0
     t2 = time.time()
     print('LR-SCI-PT diagonal... done in: ', t2 - t1, 's')
 
-    print(f'LR-SCI-PT epsilons  : {eps2=} {eps_mu=} {eps_resp=}')
+    print(f'LR-SCI-PT epsilons  : {eps2=} {eps2mult=} {eps_mu=} {eps_resp=}')
     print(f'LR-SCI-PT dimensions: {N_internal=} {N_external=} {N_total=}')
 
     # compute first-order wave function coefficients (c1)
     print('LR-SCI-PT V@c0...')
     t1 = time.time()
-    Vc0 = op.Vmatvec_direct(ham, wfn, N_internal, eps2, c0)
+    Vc0 = op.Vmatvec_direct(ham, wfn, N_internal, eps2mult, c0)
     print('LR-SCI-PT forming c1...')
     c1 = Vc0 / (E0 - diagonal)
     E2 = np.dot(c1, Vc0)
@@ -274,7 +274,7 @@ def resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, frequency=0.0
     # compute second-order wave function coefficients (c2)
     print('LR-SCI-PT V@c1...')
     t1 = time.time()
-    rhs = -op.Vmatvec_direct(ham, wfn, N_internal, eps2, c1)
+    rhs = -op.Vmatvec_direct(ham, wfn, N_internal, eps2mult, c1)
     t2 = time.time()
     print('LR-SCI-PT V@c1... done in:     ', t2 - t1, 's')
     print('LR-SCI-PT forming c2...')
@@ -387,9 +387,9 @@ def resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, frequency=0.0
         _t1 = time.time()
         response_vector = response_vectors[(label, omega, parity)]
         VX0 = np.zeros_like(response_vector, dtype=dtype)
-        VX0 += op.Vmatvec_direct(ham, wfn, N_internal, eps2, response_vector.real)
+        VX0 += op.Vmatvec_direct(ham, wfn, N_internal, eps2mult, response_vector.real)
         if dtype == np.complex128:
-            VX0 += 1j * op.Vmatvec_direct(ham, wfn, N_internal, eps2, response_vector.imag)
+            VX0 += 1j * op.Vmatvec_direct(ham, wfn, N_internal, eps2mult, response_vector.imag)
         VX0_vectors[(label, omega, parity)] = VX0
         _t2 = time.time()
         print(f'V@X0 {label=}', _t2 - _t1, 's')
