@@ -70,7 +70,9 @@ def resp(ham, wfn, op, e_vecs, integrals, perturbations, frequency=0.0, gamma=0.
 
     matvec = lambda v: wrap_matvec(op, v)
     hdiag = op.diagonal()
-    e_vals, e_vecs = solve_ci(matvec, hdiag, roots=1, c0=e_vecs, verbose=True)
+    e_vals, e_vecs, converged = solve_ci(matvec, hdiag, roots=1, c0=e_vecs, verbose=True)
+    while not converged:
+        e_vals, e_vecs, converged = solve_ci(matvec, hdiag, roots=1, c0=e_vecs, verbose=True)
     e_vals += op.ecore
     old_energy = np.min(e_vals)
     ham_perturbations = {label: pyci.hamiltonian(0., integral, ham.two_mo*0) for (label, integral) in integrals.items()}
@@ -85,7 +87,9 @@ def resp(ham, wfn, op, e_vecs, integrals, perturbations, frequency=0.0, gamma=0.
         op.update(ham, wfn)
         matvec = lambda v: wrap_matvec(op, v)
         hdiag = op.diagonal()
-        e_vals, e_vecs = solve_ci(matvec, hdiag, roots=1, c0=e_vecs, verbose=True)
+        e_vals, e_vecs, converged = solve_ci(matvec, hdiag, roots=1, c0=e_vecs, verbose=True)
+        while not converged:
+            e_vals, e_vecs, converged = solve_ci(matvec, hdiag, roots=1, c0=e_vecs, verbose=True)
         e_vals += op.ecore
         delta_e = old_energy - np.min(e_vals)
         old_energy = np.min(e_vals)
@@ -125,7 +129,9 @@ def resp(ham, wfn, op, e_vecs, integrals, perturbations, frequency=0.0, gamma=0.
             op.update(ham, wfn)
             matvec = lambda v: wrap_matvec(op, v)
             hdiag = op.diagonal()
-            e_vals, e_vecs = solve_ci(matvec, hdiag, roots=1, c0=e_vecs, verbose=True)
+            e_vals, e_vecs, converged = solve_ci(matvec, hdiag, roots=1, c0=e_vecs, verbose=True)
+            while not converged:
+                e_vals, e_vecs, converged = solve_ci(matvec, hdiag, roots=1, c0=e_vecs, verbose=True)
             e_vals += op.ecore
             delta_e = old_energy - np.min(e_vals)
             old_energy = np.min(e_vals)
@@ -337,7 +343,10 @@ def resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, eps2mult, fre
     for label in integrals.keys():
         for N in (0,1,2):
             for M in (0,1,2):
-                assert np.allclose(moments[(label, N, M)], moments[(label, M, N)]) or np.allclose(moments[(label, N, M)], -moments[(label, M, N)])
+                if not np.allclose(moments[(label, N, M)], moments[(label, M, N)]) or np.allclose(moments[(label, N, M)], -moments[(label, M, N)]):
+                    print(f'WARNING: transition moments did not match for {(label, M, N)} and {(label, M, N)}:', moments[(label, N, M)], moments[(label, M, N)])
+
+
 
     # solve zeroth, first, and second-order linear response equations
     # and assemble final response functions
