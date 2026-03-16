@@ -69,7 +69,9 @@ while dets_added:
     e_vecs = np.concatenate([e_vecs, np.zeros((dets_added, e_vecs.shape[1]))], axis=0)
     matvec = lambda v: wrap_matvec(op, v)
     hdiag = op.diagonal()
-    e_vals, e_vecs = solve_ci(matvec, hdiag, roots=1, c0=e_vecs, verbose=True)
+    e_vals, e_vecs, converged = solve_ci(matvec, hdiag, roots=1, c0=e_vecs, verbose=True)
+    while not converged:
+        e_vals, e_vecs, converged = solve_ci(matvec, hdiag, roots=1, c0=e_vecs, verbose=True)
     e_vals += op.ecore
     delta_e = old_energy - np.min(e_vals)
     old_energy = np.min(e_vals)
@@ -111,7 +113,9 @@ if args.natorb:
         e_vecs = np.concatenate([e_vecs, np.zeros((dets_added, e_vecs.shape[1]))], axis=0)
         matvec = lambda v: wrap_matvec(op, v)
         hdiag = op.diagonal()
-        e_vals, e_vecs = solve_ci(matvec, hdiag, roots=1, c0=e_vecs, verbose=True)
+        e_vals, e_vecs, converged = solve_ci(matvec, hdiag, roots=1, c0=e_vecs, verbose=True)
+        while not converged:
+            e_vals, e_vecs, converged = solve_ci(matvec, hdiag, roots=1, c0=e_vecs, verbose=True)
         e_vals += op.ecore
         delta_e = old_energy - np.min(e_vals)
         old_energy = np.min(e_vals)

@@ -52,6 +52,7 @@ def solve_ci(hvp, hdiag, roots, tol=1e-10, maxiter=100, verbose=False, c0=None):
         tol (float): convergence tolerance on the residual norm
     """
     # select initial unit vectors based on diagonal hessian
+    converged = False
     dim = len(hdiag)
     if c0 is not None:
         print(c0.shape)
@@ -74,7 +75,8 @@ def solve_ci(hvp, hdiag, roots, tol=1e-10, maxiter=100, verbose=False, c0=None):
             for k in range(len(L)):
                 print(f'{i+1}       {k+1}   {L[k]:.6e}    {np.linalg.norm(r[:,k]):.6e}')
         if (all(np.linalg.norm(r, axis=0) < tol)):
-            return L, X
+            converged = True
+            return L, X, converged
         theta = 1e-3
         denom = L[:,None] - hdiag
         denom[np.abs(denom)<theta] = theta
@@ -93,4 +95,4 @@ def solve_ci(hvp, hdiag, roots, tol=1e-10, maxiter=100, verbose=False, c0=None):
                 new_vs.append(vp)
         new_vs = np.array(new_vs).T
         AV = np.hstack([AV, hvp(new_vs)])
-    raise ValueError('Not converged')
+    return L, X, converged
