@@ -5,7 +5,7 @@ import pyscf
 import numpy as np
 import pyci
 from solvers import solve_ci
-from response import resp, resp_pt2, wrap_matvec, one_electron_ao2mo
+from response import resp, resp_pt2, wrap_matvec, one_electron_ao2mo, _make_rdm1_on_mo
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--xyz', type=str, required=True)

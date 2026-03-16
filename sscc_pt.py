@@ -7,7 +7,7 @@ import pyscf
 import numpy as np
 import pyci
 from solvers import solve_ci
-from response import resp_pt2, wrap_matvec, _make_rdm1_on_mo, one_electron_ao2mo
+from response import resp_pt2, wrap_matvec, one_electron_ao2mo, _make_rdm1_on_mo
 from sscc_utils import dso_integral, pso_integrals, sd_integrals, fc_integrals, atom_gyro_list, convert_unit
 
 parser = argparse.ArgumentParser()
