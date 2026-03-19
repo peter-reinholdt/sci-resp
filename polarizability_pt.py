@@ -17,6 +17,7 @@ parser.add_argument('--eps', type=float, default=1e-3)
 #parser.add_argument('--eps2', type=float, default=1e-9)
 #parser.add_argument('--eps2mult', type=float, default=1e-9)
 parser.add_argument('--natorb', action='store_true')
+parser.add_argument('--component', type=str, default=None)
 args = parser.parse_args()
 
 xyz = args.xyz
@@ -121,9 +122,15 @@ if args.natorb:
         num_determinants = e_vecs.shape[0]
         print(f'{niter=} {eps=} {e_vals[0]=} {delta_e=} {dets_added=} {num_determinants=}')
 
-dipole_integrals_ao = mol.intor('int1e_r')
+if args.component is not None:
+    component = args.component.upper()
+    index = {'X': 0, 'Y': 1, 'Z': 2}[component]
+    dipole_integrals_ao = [mol.intor('int1e_r')[index]]
+    labels = [component]
+else:
+    dipole_integrals_ao = mol.intor('int1e_r')
+    labels = ['X', 'Y', 'Z']
 dipole_integrals_mo = [one_electron_ao2mo(cas, integral) for integral in dipole_integrals_ao]
-labels = ['X', 'Y', 'Z']
 integrals  = {label: integral for (label, integral) in zip(labels, dipole_integrals_mo)}
 perturbations = [(label, frequency, parity) for label in labels 
                                             for frequency in [0.0] 

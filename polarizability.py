@@ -14,6 +14,7 @@ parser.add_argument('--ncore', type=int, default=0)
 parser.add_argument('--couple-property', action=argparse.BooleanOptionalAction, default=True)
 parser.add_argument('--couple-response', action=argparse.BooleanOptionalAction, default=True)
 parser.add_argument('--eps', type=float, default=1e-3)
+parser.add_argument('--component', type=str, default=None)
 args = parser.parse_args()
 
 xyz = args.xyz
@@ -73,13 +74,21 @@ while dets_added:
     print(f'{niter=} {eps=} {e_vals[0]=} {delta_e=} {dets_added=} {num_determinants=}')
 
 
-dipole_integrals_ao = mol.intor('int1e_r')
+
+if args.component is not None:
+    component = args.component.upper()
+    index = {'X': 0, 'Y': 1, 'Z': 2}[component]
+    dipole_integrals_ao = [mol.intor('int1e_r')[index]]
+    labels = [component]
+else:
+    dipole_integrals_ao = mol.intor('int1e_r')
+    labels = ['X', 'Y', 'Z']
 dipole_integrals_mo = [one_electron_ao2mo(cas, integral) for integral in dipole_integrals_ao]
-labels = ['X', 'Y', 'Z']
 integrals  = {label: integral for (label, integral) in zip(labels, dipole_integrals_mo)}
 perturbations = [(label, frequency, parity) for label in labels 
                                             for frequency in [0.0] 
                                             for parity in [0]]
 
-wfn, op, e_vecs, response_vectors, property_vectors, response_functions = resp(ham, wfn, op, e_vecs, integrals, perturbations, eps_mu=eps, eps_resp=eps)
+wfn, op, e_vecs, response_vectors, property_vectors, response_functions = resp(ham, wfn, op, e_vecs, integrals,
+        perturbations, eps_mu=eps_mu, eps_resp=eps_resp)
 print_var_summary(response_functions)

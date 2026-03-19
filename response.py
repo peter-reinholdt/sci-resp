@@ -273,6 +273,7 @@ def resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, eps2mult, fre
     print('LR-SCI-PT forming c1...')
     c1 = Vc0 / (E0 - diagonal)
     E2 = np.dot(c1, Vc0)
+    print(f'PT2-corrected energy is {E0 + E2=}')
     del Vc0
     t2 = time.time()
     print('LR-SCI-PT V@c0... done in:     ', t2 - t1, 's')
@@ -343,7 +344,7 @@ def resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, eps2mult, fre
     for label in integrals.keys():
         for N in (0,1,2):
             for M in (0,1,2):
-                if not np.allclose(moments[(label, N, M)], moments[(label, M, N)]) or np.allclose(moments[(label, N, M)], -moments[(label, M, N)]):
+                if not (np.allclose(moments[(label, N, M)], moments[(label, M, N)]) or np.allclose(moments[(label, N, M)], -moments[(label, M, N)])):
                     print(f'WARNING: transition moments did not match for {(label, M, N)} and {(label, M, N)}:', moments[(label, N, M)], moments[(label, M, N)])
 
 
