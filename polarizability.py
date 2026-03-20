@@ -15,6 +15,7 @@ parser.add_argument('--couple-property', action=argparse.BooleanOptionalAction, 
 parser.add_argument('--couple-response', action=argparse.BooleanOptionalAction, default=True)
 parser.add_argument('--eps', type=float, default=1e-3)
 parser.add_argument('--component', type=str, default=None)
+parser.add_argument('--state', type=int, default=0)
 args = parser.parse_args()
 
 xyz = args.xyz
@@ -41,11 +42,16 @@ ham = pyci.hamiltonian(ecore, h1, eri.transpose(0,2,1,3))
 
 wfn = pyci.fullci_wfn(ham.nbasis, *nelec)
 wfn.add_hartreefock_det()
-dets_added = 1
+state = args.state
+nroots = state + 1
+
+if nroots > 1:
+    wfn.add_excited_dets(1)
+dets_added = len(wfn)
 op = pyci.sparse_op(ham, wfn)
-e_vecs = np.array([[1.]])
-e_vals = op.get_element(0,0) + op.ecore
-old_energy = np.min(e_vals)
+e_vals, e_vecs = op.solve(n=nroots)
+e_vecs = e_vecs.T
+old_energy = e_vals[state]
 niter = 0
 
 # 1) Solve for |Psi_0>
@@ -56,24 +62,28 @@ eps_resp = eps if args.couple_response else None
 dets_added = True
 while dets_added:
     # Add connected determinants to wave function via HCI
-    dets_added = pyci.add_hci(ham, wfn, e_vecs[:, 0], eps=eps)
+    screen_vector = np.max(np.abs(e_vecs), axis=1)
+    dets_added = pyci.add_hci(ham, wfn, screen_vector, eps=eps)
     # Update CI matrix operator
     op.update(ham, wfn)
     # Solve CI matrix problem
     e_vecs = np.concatenate([e_vecs, np.zeros((dets_added, e_vecs.shape[1]))], axis=0)
     matvec = lambda v: wrap_matvec(op, v)
     hdiag = op.diagonal()
-    e_vals, e_vecs, converged = solve_ci(matvec, hdiag, roots=1, c0=e_vecs, verbose=True)
+    e_vals, e_vecs, converged = solve_ci(matvec, hdiag, roots=nroots, c0=e_vecs, verbose=True)
     while not converged:
-        e_vals, e_vecs, converged = solve_ci(matvec, hdiag, roots=1, c0=e_vecs, verbose=True)
+        e_vals, e_vecs, converged = solve_ci(matvec, hdiag, roots=nroots, c0=e_vecs, verbose=True)
     e_vals += op.ecore
-    delta_e = old_energy - np.min(e_vals)
-    old_energy = np.min(e_vals)
+    delta_e = old_energy - e_vals[state]
+    old_energy = e_vals[state]
     niter += 1
     num_determinants = e_vecs.shape[0]
-    print(f'{niter=} {eps=} {e_vals[0]=} {delta_e=} {dets_added=} {num_determinants=}')
-
-
+    for root in range(nroots):
+        istarget = ' * ' if root == state else '   '
+        ΔE_au = e_vals[root] - e_vals[0]
+        ΔE_eV = (e_vals[root] - e_vals[0]) * 27.211396
+        print(f'{root=}{istarget} {e_vals[root]=: 16.12f} {ΔE_au=: 12.8f} {ΔE_eV=: 12.8f}')
+    print(f'{niter=} {eps=} {e_vals[state]=} {delta_e=} {dets_added=} {num_determinants=}')
 
 if args.component is not None:
     component = args.component.upper()
@@ -89,6 +99,5 @@ perturbations = [(label, frequency, parity) for label in labels
                                             for frequency in [0.0] 
                                             for parity in [0]]
 
-wfn, op, e_vecs, response_vectors, property_vectors, response_functions = resp(ham, wfn, op, e_vecs, integrals,
-        perturbations, eps_mu=eps_mu, eps_resp=eps_resp)
+wfn, op, e_vecs, response_vectors, property_vectors, response_functions = resp(ham, wfn, op, e_vecs, integrals, perturbations, eps_mu=eps_mu, eps_resp=eps_resp, state=state)
 print_var_summary(response_functions)

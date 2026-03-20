@@ -39,7 +39,7 @@ def zeropad(x, N):
     out[:len(x), ...] = x
     return out
 
-def resp(ham, wfn, op, e_vecs, integrals, perturbations, frequency=0.0, gamma=0.0, triplet=False, eps_mu=None, eps_resp=None, overwrite=True):
+def resp(ham, wfn, op, e_vecs, integrals, perturbations, frequency=0.0, gamma=0.0, triplet=False, eps_mu=None, eps_resp=None, overwrite=True, state=0):
     """
     Args:
         ham (pyci.Hamiltonian): electronic hamiltonian
@@ -59,6 +59,8 @@ def resp(ham, wfn, op, e_vecs, integrals, perturbations, frequency=0.0, gamma=0.
     """
     couple_property = eps_mu is not None
     couple_response = eps_resp is not None
+
+    nroots = state + 1
     
     if not overwrite:
         # avoid overwriting wfn, op
@@ -70,30 +72,35 @@ def resp(ham, wfn, op, e_vecs, integrals, perturbations, frequency=0.0, gamma=0.
 
     matvec = lambda v: wrap_matvec(op, v)
     hdiag = op.diagonal()
-    e_vals, e_vecs, converged = solve_ci(matvec, hdiag, roots=1, c0=e_vecs, verbose=True)
+    e_vals, e_vecs, converged = solve_ci(matvec, hdiag, roots=nroots, c0=e_vecs, verbose=True)
     while not converged:
-        e_vals, e_vecs, converged = solve_ci(matvec, hdiag, roots=1, c0=e_vecs, verbose=True)
+        e_vals, e_vecs, converged = solve_ci(matvec, hdiag, roots=nroots, c0=e_vecs, verbose=True)
     e_vals += op.ecore
-    old_energy = np.min(e_vals)
+    old_energy = e_vals[state]
     ham_perturbations = {label: pyci.hamiltonian(0., integral, ham.two_mo*0) for (label, integral) in integrals.items()}
 
     # for each perturbation, add determinants connecting via the one-electron operator, and re-solve
     if couple_property:
         dets_added = 0
         for ham_perturbation in ham_perturbations.values():
-            dets_added += pyci.add_hci(ham_perturbation, wfn, e_vecs[:, 0], eps=eps_mu)
-            num_determinants = len(wfn.to_det_array())
-            e_vecs = zeropad(e_vecs, num_determinants)
+            dets_added += pyci.add_hci(ham_perturbation, wfn, e_vecs[:, state], eps=eps_mu)
+            num_determinants = len(wfn)
+        e_vecs = zeropad(e_vecs, num_determinants)
         op.update(ham, wfn)
         matvec = lambda v: wrap_matvec(op, v)
         hdiag = op.diagonal()
-        e_vals, e_vecs, converged = solve_ci(matvec, hdiag, roots=1, c0=e_vecs, verbose=True)
+        e_vals, e_vecs, converged = solve_ci(matvec, hdiag, roots=nroots, c0=e_vecs, verbose=True)
         while not converged:
-            e_vals, e_vecs, converged = solve_ci(matvec, hdiag, roots=1, c0=e_vecs, verbose=True)
+            e_vals, e_vecs, converged = solve_ci(matvec, hdiag, roots=nroots, c0=e_vecs, verbose=True)
         e_vals += op.ecore
-        delta_e = old_energy - np.min(e_vals)
-        old_energy = np.min(e_vals)
-        print(f'couple_property {eps_mu=} {e_vals[0]=} {delta_e=} {dets_added=} {num_determinants=}')
+        delta_e = old_energy - e_vals[state]
+        old_energy = e_vals[state]
+        for root in range(nroots):
+            istarget = ' * ' if root == state else '   '
+            ΔE_au = e_vals[root] - e_vals[0]
+            ΔE_eV = (e_vals[root] - e_vals[0]) * 27.211396
+            print(f'{root=}{istarget} {e_vals[root]=: 16.12f} {ΔE_au=: 12.8f} {ΔE_eV=: 12.8f}')
+        print(f'couple_property {eps_mu=} {e_vals[state]=} {delta_e=} {dets_added=} {num_determinants=}')
 
     # form property vectors
     property_vectors = {}
@@ -101,12 +108,12 @@ def resp(ham, wfn, op, e_vecs, integrals, perturbations, frequency=0.0, gamma=0.
         if label in property_vectors:
             continue
         ham_perturbation = ham_perturbations[label]
-        property_vector = ham_perturbation.one_electron_direct(wfn, e_vecs[:,0], triplet=triplet)
-        property_vector -= e_vecs[:,0] * np.dot(e_vecs[:,0], property_vector)
+        property_vector = ham_perturbation.one_electron_direct(wfn, e_vecs[:,state], triplet=triplet)
+        property_vector -= e_vecs[:,state] * np.dot(e_vecs[:,state], property_vector)
         property_vectors[label] = property_vector
 
     # solve response equations
-    E0 = np.dot(e_vecs[:,0], matvec(e_vecs[:,0]))
+    E0 = np.dot(e_vecs[:,state], matvec(e_vecs[:,state]))
     response_vectors = {}
     for (label, omega, parity) in perturbations:
         E0w = E0 + parity * (omega + 1j * gamma)
@@ -129,34 +136,39 @@ def resp(ham, wfn, op, e_vecs, integrals, perturbations, frequency=0.0, gamma=0.
             op.update(ham, wfn)
             matvec = lambda v: wrap_matvec(op, v)
             hdiag = op.diagonal()
-            e_vals, e_vecs, converged = solve_ci(matvec, hdiag, roots=1, c0=e_vecs, verbose=True)
+            e_vals, e_vecs, converged = solve_ci(matvec, hdiag, roots=nroots, c0=e_vecs, verbose=True)
             while not converged:
-                e_vals, e_vecs, converged = solve_ci(matvec, hdiag, roots=1, c0=e_vecs, verbose=True)
+                e_vals, e_vecs, converged = solve_ci(matvec, hdiag, roots=nroots, c0=e_vecs, verbose=True)
             e_vals += op.ecore
-            delta_e = old_energy - np.min(e_vals)
-            old_energy = np.min(e_vals)
+            delta_e = old_energy - e_vals[state]
+            old_energy = e_vals[state]
             # form property vectors
             property_vectors = {}
             for (label, omega, parity) in perturbations:
                 if label in property_vectors:
                     continue
                 ham_perturbation = ham_perturbations[label]
-                property_vector = ham_perturbation.one_electron_direct(wfn, e_vecs[:,0], triplet=triplet)
-                property_vector -= e_vecs[:,0] * np.dot(e_vecs[:,0], property_vector)
+                property_vector = ham_perturbation.one_electron_direct(wfn, e_vecs[:,state], triplet=triplet)
+                property_vector -= e_vecs[:,state] * np.dot(e_vecs[:,state], property_vector)
                 property_vectors[label] = property_vector
             # solve response equations
-            E0 = np.dot(e_vecs[:,0], matvec(e_vecs[:,0]))
+            E0 = np.dot(e_vecs[:,state], matvec(e_vecs[:,state]))
             for (label, omega, parity) in perturbations:
                 E0w = E0 + parity * (omega + 1j * gamma)
                 property_vector = property_vectors[label]
                 response_vector = davidson_response(lambda v: matvec(v)-E0w*v, property_vector, hdiag-E0w, verbose=False)
                 response_vectors[(label, omega, parity)] = response_vector
             # exit when almost no new determinants are added
+            for root in range(nroots):
+                istarget = ' * ' if root == state else '   '
+                ΔE_au = e_vals[root] - e_vals[0]
+                ΔE_eV = (e_vals[root] - e_vals[0]) * 27.211396
+                print(f'{root=}{istarget} {e_vals[root]=: 16.12f} {ΔE_au=: 12.8f} {ΔE_eV=: 12.8f}')
             if dets_added / num_determinants < 0.01:
-                print(f'finished_couple_response {eps_resp=} {e_vals[0]=} {delta_e=} {dets_added=} {num_determinants=}')
+                print(f'finished_couple_response {eps_resp=} {e_vals[state]=} {delta_e=} {dets_added=} {num_determinants=}')
                 break
             else:
-                print(f'couple_response {eps_resp=} {e_vals[0]=} {delta_e=} {dets_added=} {num_determinants=}')
+                print(f'couple_response {eps_resp=} {e_vals[state]=} {delta_e=} {dets_added=} {num_determinants=}')
     response_functions = defaultdict(float)
     for (label, omega, parity) in perturbations:
         for label2 in integrals.keys():
@@ -208,7 +220,7 @@ def print_pt2_summary(response_functions):
             print(f'<<{label1}; {label2}>>({ω=:}) {value=:16.9f} {Δ_0=:16.9f} {Δ_1=:16.9f} {Δ_2=:16.9f}')
 
 
-def resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, eps2mult, frequency=0.0, gamma=0.0, triplet=False, eps_mu=None, eps_resp=None, overwrite=True):
+def resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, eps2mult, frequency=0.0, gamma=0.0, triplet=False, eps_mu=None, eps_resp=None, overwrite=True, state=0):
     # solve the internal/variational LR problem
     # (we run GS, GS+V, GS+X, or GS+V+X)
     #
@@ -222,10 +234,10 @@ def resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, eps2mult, fre
 
     print('LR-SCI-PT solving variational equations...')
     t1 = time.time()
-    wfn, op, e_vecs, response_vectors, property_vectors, response_functions = resp(ham, wfn, op, e_vecs, integrals, perturbations, frequency=frequency, gamma=gamma, triplet=triplet, eps_mu=eps_mu, eps_resp=eps_resp)
+    wfn, op, e_vecs, response_vectors, property_vectors, response_functions = resp(ham, wfn, op, e_vecs, integrals, perturbations, frequency=frequency, gamma=gamma, triplet=triplet, eps_mu=eps_mu, eps_resp=eps_resp, state=state)
     t2 = time.time()
     print('LR-SCI-PT solving variational equations... done in', t2 - t1, 's')
-    c0 = e_vecs.ravel()
+    c0 = e_vecs[:, state].ravel()
     E0 = np.dot(c0, op.matvec(c0))
 
     N_internal = op.shape[0]
