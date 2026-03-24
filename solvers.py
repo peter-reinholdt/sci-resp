@@ -41,7 +41,7 @@ def davidson_response(A, b, hdiag, tol=1e-6, maxiter=100, verbose=False, guess=N
         AV = np.hstack([AV, matvec(vnew)[:, None]])
     raise ValueError('Not converged')
 
-def solve_ci(hvp, hdiag, roots, tol=1e-10, maxiter=100, verbose=False, c0=None):
+def solve_ci(hvp, hdiag, roots, tol=1e-10, maxiter=100, verbose=False, c0=None, reference_state=None):
     """
     Solves for eigenvalues and eigenvectors of a hessian.
 
@@ -55,17 +55,33 @@ def solve_ci(hvp, hdiag, roots, tol=1e-10, maxiter=100, verbose=False, c0=None):
     converged = False
     dim = len(hdiag)
     if c0 is not None:
-        print(c0.shape)
-        assert c0.shape[0] == dim
-        V = c0
-    else:
-        V = np.zeros((dim, roots))
-        V[np.argsort(hdiag)[:roots], np.arange(roots)] = 1.0
+        if c0.shape[1] < roots:
+            # add extra vectors for the additional states
+            V = np.zeros((dim, roots + c0.shape[1]))
+            V[np.argsort(hdiag)[:roots], np.arange(roots)] = 1.0
+            V[:, roots:] = c0
+        else:
+            V = c0
+        q, r = np.linalg.qr(V)
+        V = q
 
     AV = hvp(V)
     for i in range(maxiter):
         S = V.T @ AV
         L, Z = np.linalg.eigh(S)
+        if reference_state is not None:
+            nkeep = 0
+            found_reference = False
+            for eigenvalue, eigenvector in zip(L, Z.T):
+                nkeep += 1
+                Xi = V @ eigenvector
+                reference_overlap = np.dot(reference_state, Xi[:len(reference_state)])
+                if np.abs(reference_overlap) > 0.9:
+                    found_reference = True
+                if (nkeep < roots) or (not found_reference):
+                    continue
+                break
+            roots = nkeep
         L = L[:roots]
         Z = Z[:, :roots]
         X = V @ Z

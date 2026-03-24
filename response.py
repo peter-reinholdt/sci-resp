@@ -39,7 +39,7 @@ def zeropad(x, N):
     out[:len(x), ...] = x
     return out
 
-def resp(ham, wfn, op, e_vecs, integrals, perturbations, frequency=0.0, gamma=0.0, triplet=False, eps_mu=None, eps_resp=None, overwrite=True, state=0):
+def resp(ham, wfn, op, e_vecs, integrals, perturbations, frequency=0.0, gamma=0.0, triplet=False, eps_mu=None, eps_resp=None, overwrite=True, state=0, reference_state=None):
     """
     Args:
         ham (pyci.Hamiltonian): electronic hamiltonian
@@ -54,7 +54,8 @@ def resp(ham, wfn, op, e_vecs, integrals, perturbations, frequency=0.0, gamma=0.
         couple_response (bool): Activate coupling to response vector
         triplet (bool): Is the one-electron operator triplet (otherwise singlet)
         overwrite (bool): Allow overwriting of the input wfn and op?
-
+        state (int): index of state to use as the reference state for linear response
+        reference_state (np.ndarray): select state based on overlap with this provided reference state
     Returns:
     """
     couple_property = eps_mu is not None
@@ -72,9 +73,16 @@ def resp(ham, wfn, op, e_vecs, integrals, perturbations, frequency=0.0, gamma=0.
 
     matvec = lambda v: wrap_matvec(op, v)
     hdiag = op.diagonal()
-    e_vals, e_vecs, converged = solve_ci(matvec, hdiag, roots=nroots, c0=e_vecs, verbose=True)
+    e_vals, e_vecs, converged = solve_ci(matvec, hdiag, roots=nroots, c0=e_vecs, verbose=True, reference_state=reference_state)
     while not converged:
-        e_vals, e_vecs, converged = solve_ci(matvec, hdiag, roots=nroots, c0=e_vecs, verbose=True)
+        e_vals, e_vecs, converged = solve_ci(matvec, hdiag, roots=nroots, c0=e_vecs, verbose=True, reference_state=reference_state)
+    if reference_state is not None:
+        for k in range(len(e_vals)):
+            overlap = np.dot(reference_state, e_vecs[:len(reference_state),k])
+            print(f'{k=} {overlap=}')
+            if np.abs(overlap) > 0.9:
+                state = k
+        nroots = state + 1
     e_vals += op.ecore
     old_energy = e_vals[state]
     ham_perturbations = {label: pyci.hamiltonian(0., integral, ham.two_mo*0) for (label, integral) in integrals.items()}
@@ -89,9 +97,16 @@ def resp(ham, wfn, op, e_vecs, integrals, perturbations, frequency=0.0, gamma=0.
         op.update(ham, wfn)
         matvec = lambda v: wrap_matvec(op, v)
         hdiag = op.diagonal()
-        e_vals, e_vecs, converged = solve_ci(matvec, hdiag, roots=nroots, c0=e_vecs, verbose=True)
+        e_vals, e_vecs, converged = solve_ci(matvec, hdiag, roots=nroots, c0=e_vecs, verbose=True, reference_state=reference_state)
         while not converged:
-            e_vals, e_vecs, converged = solve_ci(matvec, hdiag, roots=nroots, c0=e_vecs, verbose=True)
+            e_vals, e_vecs, converged = solve_ci(matvec, hdiag, roots=nroots, c0=e_vecs, verbose=True, reference_state=reference_state)
+        if reference_state is not None:
+            for k in range(len(e_vals)):
+                overlap = np.dot(reference_state, e_vecs[:len(reference_state),k])
+                print(f'{k=} {overlap=}')
+                if np.abs(overlap) > 0.9:
+                    state = k
+            nroots = state + 1
         e_vals += op.ecore
         delta_e = old_energy - e_vals[state]
         old_energy = e_vals[state]
@@ -136,9 +151,16 @@ def resp(ham, wfn, op, e_vecs, integrals, perturbations, frequency=0.0, gamma=0.
             op.update(ham, wfn)
             matvec = lambda v: wrap_matvec(op, v)
             hdiag = op.diagonal()
-            e_vals, e_vecs, converged = solve_ci(matvec, hdiag, roots=nroots, c0=e_vecs, verbose=True)
+            e_vals, e_vecs, converged = solve_ci(matvec, hdiag, roots=nroots, c0=e_vecs, verbose=True, reference_state=reference_state)
             while not converged:
-                e_vals, e_vecs, converged = solve_ci(matvec, hdiag, roots=nroots, c0=e_vecs, verbose=True)
+                e_vals, e_vecs, converged = solve_ci(matvec, hdiag, roots=nroots, c0=e_vecs, verbose=True, reference_state=reference_state)
+            if reference_state is not None:
+                for k in range(len(e_vals)):
+                    overlap = np.dot(reference_state, e_vecs[:len(reference_state),k])
+                    print(f'{k=} {overlap=}')
+                    if np.abs(overlap) > 0.9:
+                        state = k
+                nroots = state + 1
             e_vals += op.ecore
             delta_e = old_energy - e_vals[state]
             old_energy = e_vals[state]
@@ -220,7 +242,7 @@ def print_pt2_summary(response_functions):
             print(f'<<{label1}; {label2}>>({ω=:}) {value=:16.9f} {Δ_0=:16.9f} {Δ_1=:16.9f} {Δ_2=:16.9f}')
 
 
-def resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, eps2mult, frequency=0.0, gamma=0.0, triplet=False, eps_mu=None, eps_resp=None, overwrite=True, state=0):
+def resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, eps2mult, frequency=0.0, gamma=0.0, triplet=False, eps_mu=None, eps_resp=None, overwrite=True, state=0, reference_state=None):
     # solve the internal/variational LR problem
     # (we run GS, GS+V, GS+X, or GS+V+X)
     #
@@ -234,7 +256,7 @@ def resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, eps2mult, fre
 
     print('LR-SCI-PT solving variational equations...')
     t1 = time.time()
-    wfn, op, e_vecs, response_vectors, property_vectors, response_functions = resp(ham, wfn, op, e_vecs, integrals, perturbations, frequency=frequency, gamma=gamma, triplet=triplet, eps_mu=eps_mu, eps_resp=eps_resp, state=state)
+    wfn, op, e_vecs, response_vectors, property_vectors, response_functions = resp(ham, wfn, op, e_vecs, integrals, perturbations, frequency=frequency, gamma=gamma, triplet=triplet, eps_mu=eps_mu, eps_resp=eps_resp, state=state, reference_state=reference_state)
     t2 = time.time()
     print('LR-SCI-PT solving variational equations... done in', t2 - t1, 's')
     c0 = e_vecs[:, state].ravel()
