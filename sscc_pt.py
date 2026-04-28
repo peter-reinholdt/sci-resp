@@ -24,7 +24,10 @@ xyz = args.xyz
 basis = args.basis
 
 mol = pyscf.M(atom=xyz, basis=basis, symmetry=True)
-nuc_pair = [(i,j) for i in range(mol.natm) for j in range(i)]
+#nuc_pair = [(i,j) for i in range(mol.natm) for j in range(i)]
+active_atoms = [1,2]
+nuc_pair = [(i,j) for i in active_atoms for j in active_atoms if i<j]
+
 ncore = args.ncore
 ncas = mol.nao - args.ncore
 nelcas = sum(mol.nelec) - 2*ncore
@@ -141,9 +144,9 @@ for k, (i,j) in enumerate(nuc_pair):
 
 
 # SSCC - PSO (singlet response)
-pso_integrals_ao = pso_integrals(mol)
+pso_integrals_ao = pso_integrals(mol, active_atoms)
 pso_integrals_mo = [one_electron_ao2mo(cas, integral) for integral in pso_integrals_ao]
-labels = [f'PSO_{ia}_{cart}' for ia in range(mol.natm) for cart in 'xyz']
+labels = [f'PSO_{ia}_{cart}' for ia in active_atoms for cart in 'xyz']
 integrals  = {label: integral for (label, integral) in zip(labels, pso_integrals_mo)}
 perturbations = [(label, frequency, parity) for label in labels 
                                             for frequency in [0.0] 
@@ -157,9 +160,9 @@ for k, (i,j) in enumerate(nuc_pair):
             e11_pso[k, ix, iy] = -response_functions[(label1, label2, 0.0)]
 
 # SSCC - SD (triplet response)
-sd_integrals_ao = sd_integrals(mol)
+sd_integrals_ao = sd_integrals(mol, active_atoms)
 sd_integrals_mo = [one_electron_ao2mo(cas, integral) for integral in sd_integrals_ao]
-labels = [f'SD_{ia}_{cart1}{cart2}' for ia in range(mol.natm) for cart1 in 'xyz' for cart2 in 'xyz']
+labels = [f'SD_{ia}_{cart1}{cart2}' for ia in active_atoms for cart1 in 'xyz' for cart2 in 'xyz']
 integrals  = {label: integral for (label, integral) in zip(labels, sd_integrals_mo)}
 perturbations = [(label, frequency, parity) for label in labels 
                                             for frequency in [0.0] 
@@ -174,9 +177,9 @@ for k, (i,j) in enumerate(nuc_pair):
                 e11_sd[k, ix, iy] += -response_functions[(label1, label2, 0.0)]
 
 # SSCC - FC (triplet response)
-fc_integrals_ao = fc_integrals(mol)
+fc_integrals_ao = fc_integrals(mol, active_atoms)
 fc_integrals_mo = [one_electron_ao2mo(cas, integral) for integral in fc_integrals_ao]
-labels = [f'FC_{ia}' for ia in range(mol.natm)]
+labels = [f'FC_{ia}' for ia in active_atoms]
 integrals  = {label: integral for (label, integral) in zip(labels, fc_integrals_mo)}
 perturbations = [(label, frequency, parity) for label in labels 
                                             for frequency in [0.0] 
@@ -191,10 +194,10 @@ for k, (i,j) in enumerate(nuc_pair):
 
 
 print('SSCC (in Hz):')
-j_tensor_fc = convert_unit(e11_fc, mol, nuc_pair)
-j_tensor_sd = convert_unit(e11_sd, mol, nuc_pair)
-j_tensor_pso = convert_unit(e11_pso, mol, nuc_pair)
-j_tensor_dso = convert_unit(e11_dso, mol, nuc_pair)
+j_tensor_fc = convert_unit(e11_fc, mol, active_atoms)
+j_tensor_sd = convert_unit(e11_sd, mol, active_atoms)
+j_tensor_pso = convert_unit(e11_pso, mol, active_atoms)
+j_tensor_dso = convert_unit(e11_dso, mol, active_atoms)
 j_tensor_total = j_tensor_fc + j_tensor_sd + j_tensor_pso + j_tensor_dso
 for (i,j) in nuc_pair:
     print(f'{i} {j}:  DSO={j_tensor_dso[i,j]:.6f}, PSO={j_tensor_pso[i,j]:.6f}, FC={j_tensor_fc[i,j]:.6f}, SD={j_tensor_sd[i,j]:.6f}, Total={j_tensor_total[i,j]:.6f}')

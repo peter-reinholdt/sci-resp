@@ -31,18 +31,18 @@ def dso_integral(mol, orig1, orig2):
     mat += mat1.transpose(0,3,1,2) + mat1.transpose(0,3,2,1)
     return mat
 
-def pso_integrals(mol):
+def pso_integrals(mol, active_atoms):
     pso_integrals_ao = []
-    for ia in range(mol.natm):
+    for ia in active_atoms:
         mol.set_rinv_origin(mol.atom_coord(ia))
         h1ao = mol.intor_asymmetric('int1e_prinvxp', 3)
         for operator in h1ao.reshape(3, mol.nao, mol.nao):
                 pso_integrals_ao.append(operator)
     return pso_integrals_ao
 
-def sd_integrals(mol):
+def sd_integrals(mol, active_atoms):
     sd_integrals_ao = []
-    for ia in range(mol.natm):
+    for ia in active_atoms:
         mol.set_rinv_origin(mol.atom_coord(ia))
         a01p = nist.G_ELECTRON * 0.25 * mol.intor('int1e_sa01sp', 12).reshape(3,4,mol.nao,mol.nao)
         h1ao = -(a01p[:,:3] + a01p[:,:3].transpose(0,1,3,2))
@@ -55,9 +55,9 @@ def sd_integrals(mol):
             sd_integrals_ao.append(operator)
     return sd_integrals_ao
 
-def fc_integrals(mol):
+def fc_integrals(mol, active_atoms):
     fc_integrals_ao = []
-    for ia in range(mol.natm):
+    for ia in active_atoms:
         coords = mol.atom_coord(ia).reshape(1, 3)
         ao = mol.eval_gto('GTOval', coords)
         h1ao = 8*np.pi/3 * np.einsum('ip,iq->pq', ao, ao) * (nist.G_ELECTRON/2) / 2
@@ -77,8 +77,9 @@ def atom_gyro_list(mol):
             gyro.append(get_nuc_g_factor(symb))
     return np.array(gyro)
 
-def convert_unit(e11, mol, nuc_pair):
+def convert_unit(e11, mol, active_atoms):
     # unit conversions
+    nuc_pair = [(i,j) for i in active_atoms for j in active_atoms if i<j]
     e11 = e11*nist.ALPHA**4
     nuc_magneton = .5 * (nist.E_MASS/nist.PROTON_MASS)  # e*hbar/2m
     au2Hz = nist.HARTREE2J / nist.PLANCK
