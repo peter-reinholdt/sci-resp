@@ -163,17 +163,20 @@ for k, (i,j) in enumerate(nuc_pair):
 sd_integrals_ao = sd_integrals(mol, active_atoms)
 sd_integrals_mo = [one_electron_ao2mo(cas, integral) for integral in sd_integrals_ao]
 labels = [f'SD_{ia}_{cart1}{cart2}' for ia in active_atoms for cart1 in 'xyz' for cart2 in 'xyz']
-integrals  = {label: integral for (label, integral) in zip(labels, sd_integrals_mo)}
+integrals  = {label: integral for (label, integral) in zip(labels, sd_integrals_mo) if label[-2] <= label[-1]}
 perturbations = [(label, frequency, parity) for label in labels 
                                             for frequency in [0.0] 
-                                            for parity in [0]]
+                                            for parity in [0] if label[-2] <= label[-1]]
+
 response_functions = resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, eps2mult, eps_mu=eps, eps_resp=eps, triplet=True, overwrite=False)
 for k, (i,j) in enumerate(nuc_pair):
     for ix, x in enumerate('xyz'):
         for iy, y in enumerate('xyz'):
             for iw, w in enumerate('xyz'):
-                label1 = f'SD_{i}_{x}{w}'
-                label2 = f'SD_{j}_{y}{w}'
+                xw = ''.join(sorted(f'{x}{w}'))
+                yw = ''.join(sorted(f'{y}{w}'))
+                label1 = f'SD_{i}_{xw}'
+                label2 = f'SD_{j}_{yw}'
                 e11_sd[k, ix, iy] += -response_functions[(label1, label2, 0.0)]
 
 # SSCC - FC (triplet response)
