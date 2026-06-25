@@ -134,6 +134,7 @@ def resp(ham, wfn, op, e_vecs, integrals, perturbations, frequency=0.0, gamma=0.
         E0w = E0 + parity * (omega + 1j * gamma)
         property_vector = property_vectors[label]
         response_vector = davidson_response(lambda v: matvec(v)-E0w*v, property_vector, hdiag-E0w, verbose=False)
+        response_vector -= e_vecs[:, state] * np.dot(e_vecs[:, state].ravel(), response_vector.ravel())
         response_vectors[(label, omega, parity)] = response_vector
 
     # add determinants coupling through response vector (and solve response equations again)
@@ -141,12 +142,12 @@ def resp(ham, wfn, op, e_vecs, integrals, perturbations, frequency=0.0, gamma=0.
         while True:
             # add determinants
             dets_added = 0
-            screen_vector = np.zeros(len(wfn.to_det_array()))
+            screen_vector = np.zeros(len(wfn))
             for (label, omega, parity), response_vector in response_vectors.items():
                 screen_vector = np.max([np.abs(response_vector), screen_vector], axis=0)
             dets_added = pyci.add_hci(ham, wfn, screen_vector, eps=eps_resp)
             del screen_vector
-            num_determinants = len(wfn.to_det_array())
+            num_determinants = len(wfn)
             e_vecs = zeropad(e_vecs, num_determinants)
             op.update(ham, wfn)
             matvec = lambda v: wrap_matvec(op, v)
@@ -178,7 +179,9 @@ def resp(ham, wfn, op, e_vecs, integrals, perturbations, frequency=0.0, gamma=0.
             for (label, omega, parity) in perturbations:
                 E0w = E0 + parity * (omega + 1j * gamma)
                 property_vector = property_vectors[label]
-                response_vector = davidson_response(lambda v: matvec(v)-E0w*v, property_vector, hdiag-E0w, verbose=False)
+                guess = zeropad(response_vectors[(label, omega, parity)], num_determinants)
+                response_vector = davidson_response(lambda v: matvec(v)-E0w*v, property_vector, hdiag-E0w, verbose=False, guess=guess)
+                response_vector -= e_vecs[:, state] * np.dot(e_vecs[:, state].ravel(), response_vector.ravel())
                 response_vectors[(label, omega, parity)] = response_vector
             # exit when almost no new determinants are added
             for root in range(nroots):
@@ -259,6 +262,13 @@ def resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, eps2mult, fre
     wfn, op, e_vecs, response_vectors, property_vectors, response_functions = resp(ham, wfn, op, e_vecs, integrals, perturbations, frequency=frequency, gamma=gamma, triplet=triplet, eps_mu=eps_mu, eps_resp=eps_resp, state=state, reference_state=reference_state)
     t2 = time.time()
     print('LR-SCI-PT solving variational equations... done in', t2 - t1, 's')
+    # check if reference state was re-ordered
+    if reference_state is not None:
+        for k in range(e_vecs.shape[1]):
+            overlap = np.dot(reference_state, e_vecs[:len(reference_state),k])
+            print(f'{k=} {overlap=}')
+            if np.abs(overlap) > 0.9:
+                state = k
     c0 = e_vecs[:, state].ravel()
     E0 = np.dot(c0, op.matvec(c0))
 
@@ -269,26 +279,15 @@ def resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, eps2mult, fre
         Hv = Hv - c0 * np.dot(c0, Hv)
         return Hv
 
-    # select perturbative space
-    print(f'LR-SCI-PT det-add...')
+    # select perturbative space for c1, c2
+    print(f'LR-SCI-PT c0-det-add...')
     t1 = time.time()
-    # from property operator
-    dets_added = 0
-    ham_perturbations = {label: pyci.hamiltonian(0., integral, ham.two_mo*0) for (label, integral) in integrals.items()}
-    for (label, ham_perturbation) in ham_perturbations.items():
-        added = pyci.add_hci(ham_perturbation, wfn, c0, eps=eps2)
-        print('Added', added, 'from operator', label)
-        dets_added += added
-    # from Hamiltonian
-    screen_vector = np.abs(c0)
-    for (label, omega, parity), response_vector in response_vectors.items():
-        screen_vector = np.max([np.abs(response_vector), screen_vector], axis=0)
-    added = pyci.add_hci(ham, wfn, screen_vector, eps=eps2)
-    del screen_vector
-    print('Added', added, 'from c0 and response vectors')
+    added = pyci.add_hci(ham, wfn, c0, eps=eps2)
     t2 = time.time()
-    print('LR-SCI-PT det-add... done in:  ', t2 - t1, 's')
+    print(f'LR-SCI-PT c0-det-add...', t2 - t1, 's')
 
+    # get c1 and c2
+    # update diagonal
     t1 = time.time()
     op.update_diagonal(ham, wfn)
     diagonal = op.diagonal()
@@ -296,9 +295,6 @@ def resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, eps2mult, fre
     N_external = N_total - N_internal
     t2 = time.time()
     print('LR-SCI-PT diagonal... done in: ', t2 - t1, 's')
-
-    print(f'LR-SCI-PT epsilons  : {eps2=} {eps2mult=} {eps_mu=} {eps_resp=}')
-    print(f'LR-SCI-PT dimensions: {N_internal=} {N_external=} {N_total=}')
 
     # compute first-order wave function coefficients (c1)
     print('LR-SCI-PT V@c0...')
@@ -330,6 +326,38 @@ def resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, eps2mult, fre
     print('LR-SCI-PT forming c2... done in', t2 - t1, 's')
 
 
+    # add from property operator
+    print(f'LR-SCI-PT det-add...')
+    t1 = time.time()
+    dets_added = 0
+    ham_perturbations = {label: pyci.hamiltonian(0., integral, ham.two_mo*0) for (label, integral) in integrals.items()}
+    for (label, ham_perturbation) in ham_perturbations.items():
+        added = pyci.add_hci(ham_perturbation, wfn, c0, eps=eps2)
+        print('Added', added, 'from operator', label)
+        dets_added += added
+    # add from Hamiltonian / response vectors
+    screen_vector = np.zeros_like(c0)
+    for (label, omega, parity), response_vector in response_vectors.items():
+        screen_vector = np.max([np.abs(response_vector), screen_vector], axis=0)
+    added = pyci.add_hci(ham, wfn, screen_vector, eps=eps2)
+    del screen_vector
+    print('Added', added, 'from response vectors')
+    t2 = time.time()
+    print('LR-SCI-PT det-add... done in:  ', t2 - t1, 's')
+
+    t1 = time.time()
+    op.update_diagonal(ham, wfn)
+    diagonal = op.diagonal()
+    N_total = len(diagonal)
+    N_external = N_total - N_internal
+    t2 = time.time()
+    print('LR-SCI-PT diagonal... done in: ', t2 - t1, 's')
+
+    print(f'LR-SCI-PT epsilons  : {eps2=} {eps2mult=} {eps_mu=} {eps_resp=}')
+    print(f'LR-SCI-PT dimensions: {N_internal=} {N_external=} {N_total=}')
+
+
+
     # compute zeroth, first, and second-order one-electron operator products
     # and form zeroth, first, and second-order property vectors
     property_vectors = {}
@@ -343,32 +371,32 @@ def resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, eps2mult, fre
         # zeroth order
         print(f'{label=}, order=0')
         product = ham_perturbation.one_electron_direct(wfn, c0, triplet=triplet)
-        moments[(label, 0, 0)] = np.dot(c0, product[:N_internal])
-        moments[(label, 1, 0)] = np.dot(c1, product)
-        moments[(label, 2, 0)] = np.dot(c2, product)
+        moments[(label, 0, 0)] = np.dot(c0, product[:len(c0)])
+        moments[(label, 1, 0)] = np.dot(c1, product[:len(c1)])
+        moments[(label, 2, 0)] = np.dot(c2, product[:len(c2)])
         property_vectors[(label, 0)] = product
-        property_vectors[(label, 0)][:N_internal] -= c0 * moments[(label, 0, 0)]
+        property_vectors[(label, 0)][:len(c0)] -= c0 * moments[(label, 0, 0)]
 
         # first order
         print(f'{label=}, order=1')
         product = ham_perturbation.one_electron_direct(wfn, c1, triplet=triplet)
-        moments[(label, 0, 1)] = np.dot(c0, product[:N_internal])
-        moments[(label, 1, 1)] = np.dot(c1, product)
-        moments[(label, 2, 1)] = np.dot(c2, product)
+        moments[(label, 0, 1)] = np.dot(c0, product[:len(c0)])
+        moments[(label, 1, 1)] = np.dot(c1, product[:len(c1)])
+        moments[(label, 2, 1)] = np.dot(c2, product[:len(c2)])
         property_vectors[(label, 1)] = product
-        property_vectors[(label, 1)][:N_internal] -= c0 * (moments[(label, 0, 1)] + moments[(label, 1, 0)])
-        property_vectors[(label, 1)] -= c1 * (moments[(label, 0, 0)])
+        property_vectors[(label, 1)][:len(c0)] -= c0 * (moments[(label, 0, 1)] + moments[(label, 1, 0)])
+        property_vectors[(label, 1)][:len(c1)] -= c1 * (moments[(label, 0, 0)])
 
         # second order
         print(f'{label=}, order=2')
         product = ham_perturbation.one_electron_direct(wfn, c2, triplet=triplet)
-        moments[(label, 0, 2)] = np.dot(c0, product[:N_internal])
-        moments[(label, 1, 2)] = np.dot(c1, product)
-        moments[(label, 2, 2)] = np.dot(c2, product)
+        moments[(label, 0, 2)] = np.dot(c0, product[:len(c0)])
+        moments[(label, 1, 2)] = np.dot(c1, product[:len(c1)])
+        moments[(label, 2, 2)] = np.dot(c2, product[:len(c2)])
         property_vectors[(label, 2)] = product
-        property_vectors[(label, 2)][:N_internal] -= c0 * (moments[(label, 0, 2)] + moments[(label, 1, 1)] + moments[(label, 2, 0)])
-        property_vectors[(label, 2)] -= c1 * (moments[(label, 0, 1)] + moments[(label, 1, 0)])
-        property_vectors[(label, 2)] -= c2 * (moments[(label, 0, 0)])
+        property_vectors[(label, 2)][:len(c0)] -= c0 * (moments[(label, 0, 2)] + moments[(label, 1, 1)] + moments[(label, 2, 0)])
+        property_vectors[(label, 2)][:len(c1)] -= c1 * (moments[(label, 0, 1)] + moments[(label, 1, 0)])
+        property_vectors[(label, 2)][:len(c2)] -= c2 * (moments[(label, 0, 0)])
     # c1, c2 no longer needed
     del c1
     del c2
@@ -389,14 +417,14 @@ def resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, eps2mult, fre
     t1 = time.time()
     dtype = np.complex128 if gamma != 0. else np.float64
     response_functions = defaultdict(float)
-    response_vectors = {}
     # do zeroth order response
     for (label, omega, parity) in perturbations:
         _t1 = time.time()
         E0w = E0 + parity * (omega + 1j * gamma)
         rhs = property_vectors[(label, 0)].astype(dtype)
         response_vector = np.zeros_like(rhs, dtype=dtype)
-        response_vector[:N_internal] = davidson_response(lambda v: matvec(v) - E0w*v, rhs[:N_internal], diagonal[:N_internal]-E0w)
+        response_vector[:N_internal] = davidson_response(lambda v: matvec(v) - E0w*v, rhs[:N_internal],
+                diagonal[:N_internal]-E0w, guess=response_vectors[(label, omega, parity)])
         _t2 = time.time()
         print(f'X0-internal {label=}', _t2 - _t1, 's')
         _t1 = time.time()
@@ -417,8 +445,8 @@ def resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, eps2mult, fre
             response_functions[(label, label2, omega, 2)] += np.dot(response_vectors[(label, omega, parity)], property_vectors[(label2, 2)])
             # second-order (2,0) <XB2|A0> = <XB0|A2> - <XB0|V|XA1> + E2 <XA0|XB0>
             # we add <XB0|A2> and E2 <XA0|XB0> here, <XB0|V|XA1> done when we have XA1 and V@XB0
-            response_functions[(label, label2, omega, 2)] += np.dot(response_vectors[(label2, omega, -parity)], property_vectors[(label, 2)])
-            response_functions[(label, label2, omega, 2)] += E2 * np.dot(response_vectors[(label, omega, parity)], response_vectors[(label2, omega, -parity)])
+            response_functions[(label, label2, omega, 2)] += np.dot(response_vectors[(label2, omega, parity)], property_vectors[(label, 2)])
+            response_functions[(label, label2, omega, 2)] += E2 * np.dot(response_vectors[(label, omega, parity)], response_vectors[(label2, omega, parity)])
         _t2 = time.time()
         print(f'X0-dots {label=}', _t2 - _t1, 's')
     # A2 no longer needed
@@ -465,7 +493,7 @@ def resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, eps2mult, fre
             response_functions[(label, label2, omega, 2)] += np.dot(response_vector, property_vectors[(label2, 1)])
             # second-order (2,0) <XB2|A0> = <XB0|A2> - <XB0|V|XA1> + E2 <XA0|XB0>
             # we add the -<XB0|V|XA1> contribution here, <XB0|A2> + E2 <XA0|XB0> was added with the zeroth-order vectors
-            response_functions[(label, label2, omega, 2)] -= np.dot(response_vector, VX0_vectors[(label2, omega, -parity)])
+            response_functions[(label, label2, omega, 2)] -= np.dot(response_vector, VX0_vectors[(label2, omega, parity)])
         _t2 = time.time()
         print(f'X1-dots {label=}', _t2 - _t1, 's')
     t2 = time.time()

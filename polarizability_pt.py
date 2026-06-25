@@ -55,6 +55,7 @@ state = args.state
 nroots = state + 1
 
 wfn = pyci.fullci_wfn(ham.nbasis, *nelec)
+reference_state = None
 if args.load:
     with h5py.File(args.load, 'r') as f:
         for det in f['dets']:
