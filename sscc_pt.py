@@ -15,17 +15,15 @@ parser.add_argument('--ncore', type=int, default=0)
 parser.add_argument('--couple-property', action=argparse.BooleanOptionalAction, default=True)
 parser.add_argument('--couple-response', action=argparse.BooleanOptionalAction, default=True)
 parser.add_argument('--eps', type=float, default=1e-3)
-#parser.add_argument('--eps2', type=float, default=1e-9)
-#parser.add_argument('--eps2mult', type=float, default=1e-9)
 parser.add_argument('--natorb', action='store_true')
+parser.add_argument('--active-atoms', type=int, nargs='+')
 args = parser.parse_args()
 
 xyz = args.xyz
 basis = args.basis
 
 mol = pyscf.M(atom=xyz, basis=basis, symmetry=True)
-#nuc_pair = [(i,j) for i in range(mol.natm) for j in range(i)]
-active_atoms = [1,2]
+active_atoms = args.active_atoms if args.active_atoms is not None else range(mol.natm)
 nuc_pair = [(i,j) for i in active_atoms for j in active_atoms if i<j]
 
 ncore = args.ncore
