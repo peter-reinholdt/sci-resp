@@ -5,7 +5,7 @@ import pyscf
 import numpy as np
 import pyci
 from solvers import solve_ci
-from response import resp, wrap_matvec, one_electron_ao2mo
+from response import resp, wrap_matvec, one_electron_ao2mo, print_var_summary
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--xyz', type=str, required=True)
@@ -85,12 +85,5 @@ perturbations = [(label, frequency, parity) for label in labels
                                             for frequency in [omega] 
                                             for parity in [1, -1]]
 
-wfn, op, e_vecs, response_vectors, property_vectors = resp(ham, wfn, op, e_vecs, integrals, perturbations, gamma=gamma, eps_mu=eps, eps_resp=eps)
-alphas = []
-for i, label in enumerate(labels):
-    alpha = np.dot(response_vectors[(label, omega, 1)], property_vectors[label])
-    alpha += np.dot(response_vectors[(label, omega, -1)], property_vectors[label])
-    alphas.append(alpha)
-    print(f'{label=} {omega=} {alpha.real=: 16.9f} {alpha.imag=: 16.9f}', flush=True)
-alpha = np.average(alphas)
-print(f'Average:  {omega=} {alpha.real=: 16.9f} {alpha.imag=: 16.9f}')
+wfn, op, e_vecs, response_vectors, property_vectors, response_functions = resp(ham, wfn, op, e_vecs, integrals, perturbations, gamma=gamma, eps_mu=eps, eps_resp=eps)
+print_var_summary(response_functions)

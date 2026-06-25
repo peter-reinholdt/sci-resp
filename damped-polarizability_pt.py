@@ -14,7 +14,6 @@ parser.add_argument('--ncore', type=int, default=0)
 parser.add_argument('--couple-property', action=argparse.BooleanOptionalAction, default=True)
 parser.add_argument('--couple-response', action=argparse.BooleanOptionalAction, default=True)
 parser.add_argument('--eps', type=float, default=1e-3)
-parser.add_argument('--eps2', type=float, default=1e-9)
 parser.add_argument('--freq', type=float, required=True)
 parser.add_argument('--gamma', type=float, default=0.01469972198)
 args = parser.parse_args()
@@ -52,7 +51,8 @@ niter = 0
 
 # 1) Solve for |Psi_0>
 eps = args.eps
-eps2 = args.eps2
+eps2 = args.eps * 1e-2
+eps2mult = args.eps * 1e-5
 eps_mu = eps if args.couple_property else None
 eps_resp = eps if args.couple_response else None
 
@@ -86,4 +86,4 @@ integrals  = {label: integral for (label, integral) in zip(labels, dipole_integr
 perturbations = [(label, frequency, parity) for label in labels 
                                             for frequency in [omega] 
                                             for parity in [1, -1]]
-resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, gamma=gamma, eps_mu=eps_mu, eps_resp=eps_resp)
+resp_pt2(ham, wfn, op, e_vecs, integrals, perturbations, eps2, eps2mult, gamma=gamma, eps_mu=eps_mu, eps_resp=eps_resp)

@@ -36,6 +36,7 @@ mol.max_memory = 3000 # 3 GB
 mf = pyscf.scf.RHF(mol).run()
 mf.conv_tol = 1e-12
 mf.kernel()
+reference_state = None
 if args.load:
     with h5py.File(args.load, 'r') as f:
         mf.mo_coeff = f['mo_coeff'][()]
