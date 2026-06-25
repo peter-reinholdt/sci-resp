@@ -85,7 +85,7 @@ def resp(cas, ham, nelec, gs_wfn, gs_evecs, integral, omega, gamma, eps_mu, eps_
     # resolve with more added
     if couple_response:
         while True:
-            dets_added = pyci.add_hci(ham, wfn, x, eps=eps_resp)
+            dets_added = pyci.add_hci(ham, wfn, np.abs(x), eps=eps_resp)
             op.update(ham, wfn)
             e_vecs = np.concatenate((e_vecs, np.zeros((dets_added, e_vecs.shape[1]))), axis=0)
             matvec = lambda v: wrap_matvec(op, v)
